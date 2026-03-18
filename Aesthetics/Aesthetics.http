@@ -1,0 +1,6 @@
+@Aesthetics_HostAddress = http://localhost:5122
+
+GET {{Aesthetics_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###

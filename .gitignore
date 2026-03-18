@@ -1,0 +1,106 @@
+# =========================
+
+# Visual Studio
+
+# =========================
+
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# =========================
+
+# Build folders
+
+# =========================
+
+bin/
+obj/
+out/
+
+# =========================
+
+# Rider / JetBrains
+
+# =========================
+
+.idea/
+
+# =========================
+
+# Logs
+
+# =========================
+
+*.log
+logs/
+
+# =========================
+
+# Cache
+
+# =========================
+
+.cache/
+*.cache
+
+# =========================
+
+# OS files
+
+# =========================
+
+.DS_Store
+Thumbs.db
+
+# =========================
+
+# Environment files
+
+# =========================
+
+.env
+.env.*
+*.env
+
+# =========================
+
+# .NET Secrets / Config
+
+# =========================
+
+appsettings.Development.json
+appsettings.Local.json
+secrets.json
+
+Aesthetics/appsettings.json
+appsettings.Development.json
+.env
+
+# =========================
+
+# Publish
+
+# =========================
+
+publish/
+wwwroot/dist/
+
+# =========================
+
+# Node (nếu có frontend)
+
+# =========================
+
+node_modules/
+
+# =========================
+
+# Temporary files
+
+# =========================
+
+*.tmp
+*.temp
