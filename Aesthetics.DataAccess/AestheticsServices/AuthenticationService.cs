@@ -1,28 +1,29 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
+using Aesthetics.Data.AestheticsInterfaces.TokenService;
 using Aesthetics.Data.RepositoryInterfaces;
+using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
-using Microsoft.Extensions.Configuration;  
+using Azure.Core;
 using Castle.Core.Configuration;
+using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Caching.Distributed;
+using Microsoft.Extensions.Configuration;  
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
+using StackExchange.Redis;
 using System;
 using System.Collections.Generic;
 using System.IdentityModel.Tokens.Jwt;
 using System.Linq;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
-using System.Security.Cryptography;
 using XAct.Messages;
-using Microsoft.AspNetCore.Http;
-using Aesthetics.Entities.Entities;
-using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using Microsoft.EntityFrameworkCore.Storage;
-using StackExchange.Redis;
-using Aesthetics.Data.AestheticsInterfaces.TokenService;
 
 namespace Aesthetics.Data.AestheticsServices
 {
@@ -63,6 +64,7 @@ namespace Aesthetics.Data.AestheticsServices
 				{
 					new Claim(ClaimTypes.Name, user.UserName),
 					new Claim(ClaimTypes.PrimarySid, user.Id.ToString()),
+					new Claim(ClaimTypes.Role, user.Role.ToString())
 				};
 
 				var newToken = await _tokenService.CreateToken(authClaims);
@@ -86,6 +88,8 @@ namespace Aesthetics.Data.AestheticsServices
 				var dataToCache = Encoding.UTF8.GetBytes(dataCachingJson);
 				DistributedCacheEntryOptions options = new DistributedCacheEntryOptions().SetAbsoluteExpiration(DateTime.Now.AddMinutes(5));
 				_cache.Set(cachKey, dataToCache, options);
+				responseData.Token = new JwtSecurityTokenHandler().WriteToken(newToken);
+				responseData.RefreshToken = refeshToken;
 				return responseData;
 
 			}
@@ -95,8 +99,6 @@ namespace Aesthetics.Data.AestheticsServices
 				return responseData;
 			}
 		}
-
-		
 
 		public async Task<bool> logout(RequestLogout request)
 		{

@@ -106,11 +106,6 @@ namespace Aesthetics.Data.AestheticsServices
 					predicate = predicate.And(x => x.ServiceTypeName.ToLower().Contains(searchServiceType.ServiceTypeName.ToLower()));
 				}
 
-				if (!string.IsNullOrWhiteSpace(searchServiceType.ServiceCategory))
-				{
-					predicate = predicate.And(x => x.ServiceCategory.ToLower().Contains(searchServiceType.ServiceCategory.ToLower()));
-				}
-
 				var allMatching = await _serviceTypeRepository.FindByPredicate(predicate);
 				var totalCount = allMatching.Count;
 

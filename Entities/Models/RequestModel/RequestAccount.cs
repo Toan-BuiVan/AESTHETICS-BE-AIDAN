@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Aesthetics.Entities.Enum;
+using System;
 using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -12,7 +13,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public string? UserName { get; set; }
 		public string? PassWord { get; set; }
 		public string? ReferralCode { get; set; }
-		public int? AccountType { get; set; }
+		public AccountRole? AccountType { get; set; }
 		public bool? IsDoctor { get; set; }
 	}
 

@@ -6,10 +6,11 @@ using System.Threading.Tasks;
 
 namespace Aesthetics.Entities.Enum
 {
-	public enum StaffRole
+	public enum AccountRole
 	{
-		Staff = 0,
-		Admin = 1
+		Customer = 0,
+		Staff = 1,
+		Admin = 2
 	}
 
 	public enum Gender

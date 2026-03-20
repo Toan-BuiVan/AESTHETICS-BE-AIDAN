@@ -22,6 +22,9 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>Ngày tạo tài khoản</summary>
 		public DateTime? Creation { get; set; }
 
+		/// <summary>Vai trò: 0 = Nhân viên, 1 = Admin, 2 = Bác sĩ</summary>
+		public int? Role { get; set; }
+
 		/// <summary>Token làm mới cho JWT auth</summary>
 		[MaxLength(250)]
 		public string? RefreshToken { get; set; }

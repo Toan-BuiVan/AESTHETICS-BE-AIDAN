@@ -89,7 +89,7 @@ builder.Services.AddScoped<IVoucherService, VoucherService>();
 builder.Services.AddScoped<IWalletService, WalletService>();
 
 builder.Services.AddHostedService<Aesthetics.Data.AestheticsServices.EmailService.AppointmentReminderBackgroundService>();
-
+builder.Services.AddDistributedMemoryCache();
 // Background Service
 builder.Services.AddHostedService<InventoryAlertBackgroundService>();
 

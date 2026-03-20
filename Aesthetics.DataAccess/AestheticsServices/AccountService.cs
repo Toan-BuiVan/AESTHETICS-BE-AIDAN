@@ -60,13 +60,14 @@ namespace Aesthetics.Data.AestheticsServices
 					UserName = request.UserName,
 					PassWord = Security.EncryptPassWord(request.PassWord), 
 					Creation = DateTime.Now,
-					DeleteStatus = false
+					DeleteStatus = false,
+					Role = (int)request.AccountType,
 				};
 				await _accountRepository.CreateEntity(account);
 
 				switch (request.AccountType)
 				{
-					case 0: 
+					case AccountRole.Customer: 
 						var customer = new CustomerEntity
 						{
 							AccountId = account.Id,
@@ -97,17 +98,17 @@ namespace Aesthetics.Data.AestheticsServices
 						 */
 						break;
 
-					case 1: 
+					case AccountRole.Staff: 
 						var staff = new StaffEntity
 						{
 							AccountId = account.Id ,
 							SalesPoints = 0,
 							EmploymentStatus = (int)EmploymentStatus.Active,
-							Role = (int)StaffRole.Staff,
 							DeleteStatus = false,
 							IsDoctor = request.IsDoctor ?? false,
 						};
 						await _staffRepository.CreateEntity(staff);
+
 						/*
 						 * Thêm quyền cho nhân viên
 						 */
@@ -306,7 +307,6 @@ namespace Aesthetics.Data.AestheticsServices
 						Address = staff.Address,
 						IDCard = staff.IDCard,
 
-						Role = staff.Role,
 						IsDoctor = staff.IsDoctor ?? false,
 						StaffImage = staff.StaffImage,
 						EmploymentStatus = staff.EmploymentStatus,

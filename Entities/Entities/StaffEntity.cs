@@ -18,9 +18,6 @@ namespace Aesthetics.Entities.Entities
 		[MaxLength(250)]
 		public string? FullName { get; set; }
 
-		/// <summary>Vai trò: 0 = Nhân viên, 1 = Admin, 2 = Bác sĩ</summary>
-		public int Role { get; set; }
-
 		/// <summary>Ngày sinh</summary>
 		public DateTime? DateBirth { get; set; }
 
