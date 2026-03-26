@@ -15,7 +15,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public DateTime? StartTime { get; set; }
 		public EnumTreatmentPlans? TypeInvoice { get; set; }
 		public decimal? PaidAmount { get; set; }
-		public int? CustomerTreatmentPlanId { get; set; }
+		public List<int>? CustomerTreatmentPlanId { get; set; }
 		public int? VoucherId { get; set; }
 		public string? PaymentMethod { get; set; }
 	}

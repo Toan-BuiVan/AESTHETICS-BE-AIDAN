@@ -114,11 +114,11 @@ namespace Aesthetics.Data.AestheticsServices
 
 				// 5. Perform all validations
 				var validationTasks = new List<Task<bool>>
-			{
-				ValidateDoctorLimits(appointment.StaffId.Value, serviceId, service, appointmentDate),
-				ValidateClinicLimits(clinicId, appointmentDate),
-				ValidateTimeLocks(clinicId, appointment.StartTime.Value)
-			};
+				{
+					ValidateDoctorLimits(appointment.StaffId.Value, serviceId, service, appointmentDate),
+					ValidateClinicLimits(clinicId, appointmentDate),
+					ValidateTimeLocks(clinicId, appointment.StartTime.Value)
+				};
 
 				var validationResults = await Task.WhenAll(validationTasks);
 				if (validationResults.Any(result => !result))
@@ -129,53 +129,156 @@ namespace Aesthetics.Data.AestheticsServices
 				// 6. Get next number order
 				var nextNumberOrder = await GetNextNumberOrder(clinicId, appointmentDate);
 
-				// 7. Create appointment and assignment
-				var appointmentEntity = CreateAppointmentEntity(appointment, serviceId, service);
-				var created = await _appointmentRepositoty.CreateEntity(appointmentEntity);
+				// ✅ NEW: Xử lý list CustomerTreatmentPlanId
+				var customerTreatmentPlanIds = appointment.CustomerTreatmentPlanId ?? new List<int>();
 
-				if (!created)
+				if (customerTreatmentPlanIds.Count == 0 && service.IsCourse == true)
 				{
-					_logger.LogError("Create Appointment failed at repository level");
+					_logger.LogWarning("Create Appointment failed: CustomerTreatmentPlanId list is empty for course service {ServiceId}", serviceId);
 					return false;
 				}
 
-				// 8. Create assignment
-				var assignment = CreateAppointmentAssignment(
-					appointmentEntity.Id,
-					appointment.StaffId.Value,
-					clinicId,
-					service,
-					appointment.StartTime.Value,
-					nextNumberOrder);
+				// 7. Create appointment(s) - một appointment cho mỗi plan
+				bool allCreatedSuccessfully = true;
 
-				var assignmentCreated = await _appointmentAssignmentRepository.CreateEntity(assignment);
-				if (!assignmentCreated)
+				if (customerTreatmentPlanIds.Count > 0)
 				{
-					_logger.LogWarning("Create AppointmentAssignment failed for AppointmentId {AppointmentId}", appointmentEntity.Id);
-				}
-
-				// 9. *** THÊM MỚI: Tạo hóa đơn và chi tiết hóa đơn ***
-				if (appointment.TypeInvoice.HasValue && appointment.TypeInvoice != EnumTreatmentPlans.PayAfterService)
-				{
-					var invoiceId = await CreateInvoiceForAppointmentAsync(appointment, service, appointmentEntity.Id);
-					if (invoiceId.HasValue)
+					// Tạo appointment cho từng plan
+					foreach (var customerTreatmentPlanId in customerTreatmentPlanIds)
 					{
-						// Cập nhật trạng thái thanh toán của appointment nếu đã thanh toán
-						if (appointment.TypeInvoice == EnumTreatmentPlans.PayInAdvance)
+						var appointmentEntity = new AppointmentEntity
 						{
-							appointmentEntity.PaymentStatus = true;
-							await _appointmentRepositoty.UpdateEntity(appointmentEntity);
+							CustomerId = appointment.CustomerId,
+							StaffId = appointment.StaffId,
+							ServiceId = serviceId,
+							StartTime = appointment.StartTime,
+							CustomerTreatmentPlanId = customerTreatmentPlanId,
+							Status = (int)AppointmentStatus.Booked,
+							PaymentStatus = false,
+							DeleteStatus = false,
+							CreationDate = DateTime.Now,
+							IsConfirmationEmailSent = false,
+							IsReminderEmailSent = false,
+							ReminderHoursBefore = DEFAULT_REMINDER_HOURS
+						};
+
+						var created = await _appointmentRepositoty.CreateEntity(appointmentEntity);
+						if (!created)
+						{
+							_logger.LogError("Create Appointment failed for CustomerTreatmentPlanId {PlanId}", customerTreatmentPlanId);
+							allCreatedSuccessfully = false;
+							continue;
 						}
 
-						_logger.LogInformation("Created Invoice {InvoiceId} for AppointmentId {AppointmentId}", invoiceId, appointmentEntity.Id);
+						// 8. Create assignment
+						var assignment = CreateAppointmentAssignment(
+							appointmentEntity.Id,
+							appointment.StaffId.Value,
+							clinicId,
+							service,
+							appointment.StartTime.Value,
+							nextNumberOrder);
+
+						var assignmentCreated = await _appointmentAssignmentRepository.CreateEntity(assignment);
+						if (!assignmentCreated)
+						{
+							_logger.LogWarning("Create AppointmentAssignment failed for AppointmentId {AppointmentId}", appointmentEntity.Id);
+						}
+
+						// 9. Tạo hóa đơn
+						if (appointment.TypeInvoice.HasValue && appointment.TypeInvoice != EnumTreatmentPlans.PayAfterService)
+						{
+							var invoiceId = await CreateInvoiceForAppointmentAsync(appointment, service, appointmentEntity.Id, customerTreatmentPlanId);
+							if (invoiceId.HasValue)
+							{
+								if (appointment.TypeInvoice == EnumTreatmentPlans.PayInAdvance)
+								{
+									appointmentEntity.PaymentStatus = true;
+									await _appointmentRepositoty.UpdateEntity(appointmentEntity);
+								}
+
+								_logger.LogInformation("Created Invoice {InvoiceId} for AppointmentId {AppointmentId}", invoiceId, appointmentEntity.Id);
+							}
+						}
+
+						// 10. Send confirmation email
+						_ = Task.Run(async () => await SendConfirmationEmail(appointmentEntity));
+
+						_logger.LogInformation("Created Appointment for CustomerTreatmentPlanId {PlanId}, AppointmentId {AppointmentId}",
+							customerTreatmentPlanId, appointmentEntity.Id);
 					}
 				}
+				else
+				{
+					// Trường hợp dịch vụ lẻ (không phải package)
+					var appointmentEntity = new AppointmentEntity
+					{
+						CustomerId = appointment.CustomerId,
+						StaffId = appointment.StaffId,
+						ServiceId = serviceId,
+						StartTime = appointment.StartTime,
+						CustomerTreatmentPlanId = null,
+						Status = (int)AppointmentStatus.Booked,
+						PaymentStatus = false,
+						DeleteStatus = false,
+						CreationDate = DateTime.Now,
+						IsConfirmationEmailSent = false,
+						IsReminderEmailSent = false,
+						ReminderHoursBefore = DEFAULT_REMINDER_HOURS
+					};
 
-				// 10. Send confirmation email (fire and forget)
-				_ = Task.Run(async () => await SendConfirmationEmail(appointmentEntity));
+					var created = await _appointmentRepositoty.CreateEntity(appointmentEntity);
+					if (!created)
+					{
+						_logger.LogError("Create Appointment failed for single service");
+						return false;
+					}
 
-				_logger.LogInformation("Create Appointment success for CustomerId {CustomerId} with ServiceId {ServiceId} at ClinicId {ClinicId}",
-					appointment.CustomerId, serviceId, clinicId);
+					// Create assignment
+					var assignment = CreateAppointmentAssignment(
+						appointmentEntity.Id,
+						appointment.StaffId.Value,
+						clinicId,
+						service,
+						appointment.StartTime.Value,
+						nextNumberOrder);
+
+					var assignmentCreated = await _appointmentAssignmentRepository.CreateEntity(assignment);
+					if (!assignmentCreated)
+					{
+						_logger.LogWarning("Create AppointmentAssignment failed for AppointmentId {AppointmentId}", appointmentEntity.Id);
+					}
+
+					// Create invoice
+					if (appointment.TypeInvoice.HasValue && appointment.TypeInvoice != EnumTreatmentPlans.PayAfterService)
+					{
+						var invoiceId = await CreateInvoiceForAppointmentAsync(appointment, service, appointmentEntity.Id, null);
+						if (invoiceId.HasValue)
+						{
+							if (appointment.TypeInvoice == EnumTreatmentPlans.PayInAdvance)
+							{
+								appointmentEntity.PaymentStatus = true;
+								await _appointmentRepositoty.UpdateEntity(appointmentEntity);
+							}
+
+							_logger.LogInformation("Created Invoice {InvoiceId} for AppointmentId {AppointmentId}", invoiceId, appointmentEntity.Id);
+						}
+					}
+
+					_ = Task.Run(async () => await SendConfirmationEmail(appointmentEntity));
+
+					_logger.LogInformation("Created single service Appointment for ServiceId {ServiceId}, AppointmentId {AppointmentId}",
+						serviceId, appointmentEntity.Id);
+				}
+
+				if (!allCreatedSuccessfully && customerTreatmentPlanIds.Count > 0)
+				{
+					_logger.LogWarning("Create Appointment: Some appointments failed but others succeeded");
+					return false;
+				}
+
+				_logger.LogInformation("Create Appointment success for CustomerId {CustomerId} with {Count} plans",
+					appointment.CustomerId, customerTreatmentPlanIds.Count);
 
 				return true;
 			}
@@ -191,7 +294,7 @@ namespace Aesthetics.Data.AestheticsServices
 		/// <summary>
 		/// Tạo hóa đơn và chi tiết hóa đơn cho appointment (có hỗ trợ voucher)
 		/// </summary>
-		private async Task<int?> CreateInvoiceForAppointmentAsync(CreateAppointment appointment, ServiceEntity service, int appointmentId)
+		private async Task<int?> CreateInvoiceForAppointmentAsync(CreateAppointment appointment, ServiceEntity service, int appointmentId, int? customerTreatmentPlanId = null)
 		{
 			try
 			{
@@ -200,9 +303,9 @@ namespace Aesthetics.Data.AestheticsServices
 				int? treatmentPlanId = null;
 
 				// Nếu có CustomerTreatmentPlanId, lấy thông tin treatment plan
-				if (appointment.CustomerTreatmentPlanId.HasValue)
+				if (customerTreatmentPlanId.HasValue)
 				{
-					var customerTreatmentPlan = await _customerTreatmentPlansRepository.GetById(appointment.CustomerTreatmentPlanId.Value);
+					var customerTreatmentPlan = await _customerTreatmentPlansRepository.GetById(customerTreatmentPlanId.Value);
 					treatmentPlanId = customerTreatmentPlan?.TreatmentPlanId;
 
 					if (treatmentPlanId.HasValue)
@@ -256,9 +359,9 @@ namespace Aesthetics.Data.AestheticsServices
 					CustomerId = appointment.CustomerId.Value,
 					StaffId = appointment.StaffId.Value,
 					ServiceId = service.Id,
-					VoucherId = appliedVoucherId, // *** THÊM MỚI: Lưu VoucherId đã áp dụng ***
+					VoucherId = appliedVoucherId,
 					TreatmentPlanId = treatmentPlanId,
-					TotalMoney = finalPrice, // Tổng tiền sau giảm giá
+					TotalMoney = finalPrice,
 					PaidAmount = paidAmount,
 					OutstandingBalance = finalPrice - paidAmount,
 					DateCreated = DateTime.UtcNow,
@@ -266,7 +369,7 @@ namespace Aesthetics.Data.AestheticsServices
 					Type = "BanHang",
 					OrderStatus = invoiceStatus,
 					PaymentMethod = appointment.PaymentMethod,
-					DiscountValue = discountValue, // *** THÊM MỚI: Lưu số tiền giảm giá ***
+					DiscountValue = discountValue,
 					DeleteStatus = false
 				};
 
@@ -281,20 +384,19 @@ namespace Aesthetics.Data.AestheticsServices
 				var invoiceDetail = new InvoiceDetailEntity
 				{
 					InvoiceId = invoice.Id,
-					ProductId = null, // Vì đây là dịch vụ, không phải sản phẩm
+					ProductId = null,
 					ServiceId = service.Id,
 					TreatmentPlanId = treatmentPlanId,
-					VoucherId = appliedVoucherId, // Nếu có voucher áp dụng cho dòng này
-					DiscountValue = discountValue, // Số tiền giảm giá (hoặc phần trăm, tùy logic)
-					Price = servicePrice, // Giá gốc trước giảm giá
+					VoucherId = appliedVoucherId,
+					DiscountValue = discountValue,
+					Price = servicePrice,
 					Quantity = 1,
-					TotalMoney = finalPrice, // Tổng tiền sau giảm giá
-					Status = invoiceStatus, // Hoặc "DangCho" tùy trạng thái xử lý
-					Type = "Ban", // "Ban" = bán hàng, "Nhap" = nhập hàng
-					StatusComment = false, // Mặc định chưa đánh giá
+					TotalMoney = finalPrice,
+					Status = invoiceStatus,
+					Type = "Ban",
+					StatusComment = false,
 					DeleteStatus = false
 				};
-
 
 				var detailCreated = await _invoiceDetailsRepository.CreateEntity(invoiceDetail);
 				if (!detailCreated)
@@ -520,13 +622,13 @@ namespace Aesthetics.Data.AestheticsServices
 				return appointment.ServiceId.Value;
 			}
 
-			if (appointment.CustomerTreatmentPlanId.HasValue)
+			// ✅ FIX: Lấy phần tử đầu tiên từ list và truyền vào
+			if (appointment.CustomerTreatmentPlanId != null && appointment.CustomerTreatmentPlanId.Count > 0)
 			{
-				var serviceId = await GetServiceIdFromCustomerTreatmentPlan(appointment.CustomerTreatmentPlanId.Value);
+				var serviceId = await GetServiceIdFromCustomerTreatmentPlan(appointment.CustomerTreatmentPlanId.First());
 				if (serviceId == 0)
 				{
-					_logger.LogWarning("Create Appointment failed: Cannot get ServiceId from CustomerTreatmentPlanId {CustomerTreatmentPlanId}",
-						appointment.CustomerTreatmentPlanId);
+					_logger.LogWarning("Create Appointment failed: Cannot get ServiceId from CustomerTreatmentPlanId");
 					return 0;
 				}
 				return serviceId;
@@ -553,7 +655,7 @@ namespace Aesthetics.Data.AestheticsServices
 
 		private async Task<bool> ValidateDoctorLimits(int staffId, int serviceId, ServiceEntity service, DateTime date)
 		{
-			if (service.IsCourse == (int)EnumTypeCourse.Package)
+			if (service.IsCourse == true)
 			{
 				var isWithinLimit = await CheckDoctorDailyLimit(staffId, serviceId, date);
 				if (!isWithinLimit)
@@ -616,29 +718,6 @@ namespace Aesthetics.Data.AestheticsServices
 				!x.DeleteStatus);
 
 			return existingAssignments.Count();
-		}
-
-		private AppointmentEntity CreateAppointmentEntity(CreateAppointment appointment, int serviceId, ServiceEntity service)
-		{
-			int? customerTreatmentPlanId = service.IsCourse == (int)EnumTypeCourse.Package
-				? appointment.CustomerTreatmentPlanId
-				: null;
-
-			return new AppointmentEntity
-			{
-				CustomerId = appointment.CustomerId,
-				StaffId = appointment.StaffId,
-				ServiceId = serviceId,
-				StartTime = appointment.StartTime,
-				CustomerTreatmentPlanId = customerTreatmentPlanId,
-				Status = (int)AppointmentStatus.Booked,
-				PaymentStatus = false,
-				DeleteStatus = false,
-				CreationDate = DateTime.Now,
-				IsConfirmationEmailSent = false,
-				IsReminderEmailSent = false,
-				ReminderHoursBefore = DEFAULT_REMINDER_HOURS
-			};
 		}
 
 		#endregion
@@ -721,7 +800,7 @@ namespace Aesthetics.Data.AestheticsServices
 				DeleteStatus = false
 			};
 
-			var serviceType = service.IsCourse == (int)EnumTypeCourse.Single ? "Single" : "Package";
+			var serviceType = service.IsCourse == false ? "Single" : "Package";
 			_logger.LogInformation("Created {ServiceType} service assignment for ServiceId {ServiceId}", serviceType, service.Id);
 
 			return assignment;

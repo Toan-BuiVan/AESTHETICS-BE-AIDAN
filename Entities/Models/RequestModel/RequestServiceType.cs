@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Aesthetics.Entities.Enum;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -9,7 +10,7 @@ namespace Aesthetics.Entities.Models.RequestModel
     public class RequestServiceType
     {
         public string ServiceTypeName { get; set; }
-        public string ServiceCategory { get; set; }
+        public EnumServiceType ServiceCategory { get; set; }
         public string Description { get; set; }
 	}
 
@@ -17,7 +18,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 	{
 		public int Id { get; set; }
 		public string? ServiceTypeName { get; set; }
-		public string? ServiceCategory { get; set; }
+		public EnumServiceType? ServiceCategory { get; set; }
 		public string? Description { get; set; }
 	}
 
@@ -30,5 +31,6 @@ namespace Aesthetics.Entities.Models.RequestModel
 	{
 		public int? Id { get; set; }
 		public string? ServiceTypeName { get; set; }
+		public EnumServiceType? ServiceCategory { get; set; }
 	}
 }

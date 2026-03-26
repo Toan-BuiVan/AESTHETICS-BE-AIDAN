@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
 using System.Linq;
@@ -22,6 +21,9 @@ namespace Aesthetics.Entities.Entities
 
 		/// <summary>FK → CustomerTreatmentPlans: thuộc liệu trình nào (null = đơn lẻ)</summary>
 		public int? CustomerTreatmentPlanId { get; set; }
+
+		/// <summary>FK → CustomerTreatmentSessions: liên kết với buổi chữa trị cụ thể</summary>
+		public int? CustomerTreatmentSessionId { get; set; }
 
 		/// <summary>Thời gian bắt đầu</summary>
 		public DateTime? StartTime { get; set; }
@@ -63,7 +65,9 @@ namespace Aesthetics.Entities.Entities
 		[ForeignKey(nameof(CustomerTreatmentPlanId))]
 		public virtual CustomerTreatmentPlanEntity? CustomerTreatmentPlan { get; set; }
 
-		public virtual ICollection<AppointmentAssignmentEntity> AppointmentAssignments { get; set; } = [];
+		[ForeignKey(nameof(CustomerTreatmentSessionId))]
 		public virtual CustomerTreatmentSessionEntity? CustomerTreatmentSession { get; set; }
+
+		public virtual ICollection<AppointmentAssignmentEntity> AppointmentAssignments { get; set; } = [];
 	}
 }

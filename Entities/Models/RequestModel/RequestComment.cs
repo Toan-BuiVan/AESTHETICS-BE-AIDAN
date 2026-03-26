@@ -12,18 +12,17 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public int? ProductId { get; set; }
 		public int? ServiceId { get; set; }
 		public int CustomerId { get; set; }
-
-		[StringLength(250)]
 		public string? CommentContent { get; set; }
-
-		[Range(1, 5)]
+		public string? CommentImage { get; set; }
 		public int Rating { get; set; } = 1;
 	}
 
 	public class UpdateComment
 	{
 		public int Id { get; set; }
-		public string CommentContent { get; set; }
+		public string? CommentContent { get; set; }
+		public string? CommentImage { get; set; }
+		public int Rating { get; set; } = 1;
 	}
 
 	public class DeleteComment

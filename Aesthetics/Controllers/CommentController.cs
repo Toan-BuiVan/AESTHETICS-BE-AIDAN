@@ -32,7 +32,7 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
-		[HttpPost("deletecomment")]
+		[HttpDelete("deletecomment")]
 		public async Task<IActionResult> Delete([FromBody] DeleteComment comment)
 		{
 			var result = await _commentService.delete(comment);

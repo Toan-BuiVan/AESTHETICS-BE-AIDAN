@@ -87,6 +87,7 @@ builder.Services.AddScoped<ITreatmentPlanService, TreatmentPlanService>();
 builder.Services.AddScoped<ITreatmentSessionService, TreatmentSessionService>();
 builder.Services.AddScoped<IVoucherService, VoucherService>();
 builder.Services.AddScoped<IWalletService, WalletService>();
+builder.Services.AddScoped<IStaffService, StaffService>();
 
 builder.Services.AddHostedService<Aesthetics.Data.AestheticsServices.EmailService.AppointmentReminderBackgroundService>();
 builder.Services.AddDistributedMemoryCache();
@@ -124,12 +125,15 @@ if (app.Environment.IsDevelopment())
 	app.UseSwaggerUI();
 }
 
-app.UseCors("AllowAll");
-
 app.UseHttpsRedirection();
 
-app.UseAuthentication();
+app.UseStaticFiles();
 
+app.UseRouting();
+
+app.UseCors("AllowAll");
+
+app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();

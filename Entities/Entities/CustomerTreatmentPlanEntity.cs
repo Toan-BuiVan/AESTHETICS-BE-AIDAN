@@ -16,16 +16,6 @@ namespace Aesthetics.Entities.Entities
 
 		/// <summary>FK → TreatmentPlans: gói nào</summary>
 		public int? TreatmentPlanId { get; set; }
-
-		/// <summary>Ngày bắt đầu liệu trình</summary>
-		public DateTime? StartDate { get; set; }
-
-		/// <summary>Ngày dự kiến kết thúc (= StartDate + TotalSessions * SessionInterval)</summary>
-		public DateTime? ExpectedEndDate { get; set; }
-
-		/// <summary>Số buổi đã hoàn thành (cập nhật sau mỗi buổi)</summary>
-		public int? CompletedSessions { get; set; }
-
 		/// <summary>
 		/// DangThucHien: đang chạy liệu trình,
 		/// HoanThanh: đã xong tất cả buổi,
@@ -34,10 +24,6 @@ namespace Aesthetics.Entities.Entities
 		/// </summary>
 		[MaxLength(50)]
 		public string? Status { get; set; }
-
-		/// <summary>Ghi chú chung cho liệu trình</summary>
-		public string? Notes { get; set; }
-
 		// Navigation properties
 		[ForeignKey(nameof(CustomerId))]
 		public virtual CustomerEntity? Customer { get; set; }

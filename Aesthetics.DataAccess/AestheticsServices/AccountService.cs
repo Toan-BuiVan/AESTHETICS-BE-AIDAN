@@ -98,14 +98,15 @@ namespace Aesthetics.Data.AestheticsServices
 						 */
 						break;
 
-					case AccountRole.Staff: 
+					case AccountRole.Staff:
 						var staff = new StaffEntity
 						{
-							AccountId = account.Id ,
+							AccountId = account.Id,
 							SalesPoints = 0,
 							EmploymentStatus = (int)EmploymentStatus.Active,
 							DeleteStatus = false,
 							IsDoctor = request.IsDoctor ?? false,
+							LicenseNumber = null
 						};
 						await _staffRepository.CreateEntity(staff);
 

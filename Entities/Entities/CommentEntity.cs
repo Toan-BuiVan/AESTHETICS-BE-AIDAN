@@ -30,6 +30,9 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>Ngày tạo bình luận</summary>
 		public DateTime? CreationDate { get; set; }
 
+		/// <summary>Anh danh gia</summary>
+		public string? CommentImage { get; set; }
+
 		// Navigation properties
 		[ForeignKey(nameof(ProductId))]
 		public virtual ProductEntity? Product { get; set; }

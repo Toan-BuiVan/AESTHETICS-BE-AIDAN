@@ -23,10 +23,10 @@ namespace Aesthetics.Data.RepositoryServices
 		{
 			try
 			{
-				var Service = await _dbContext.Services
+				var service = await _dbContext.Services
 					.AsNoTracking()
 					.FirstOrDefaultAsync(x => x.ServiceName.ToLower() == name.ToLower());
-				return Service;
+				return service;
 			}
 			catch (Exception ex)
 			{

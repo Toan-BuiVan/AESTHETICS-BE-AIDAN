@@ -57,7 +57,7 @@ namespace Aesthetics.Data.AestheticsServices
 				{
 					processedImage = await _commonService.BaseProcessingFunction64(service.ServiceImage);
 				}
-				var serviceName = _serviceRepository.GetByName(service.ServiceName);
+				var serviceName = await _serviceRepository.GetByName(service.ServiceName);
 				if (serviceName != null)
 				{
 					_logger.LogWarning("Create Service failed: Service with name '{ServiceName}' already exists.", service.ServiceName);
@@ -71,24 +71,53 @@ namespace Aesthetics.Data.AestheticsServices
 					ServiceImage = processedImage,
 					Price = service.Price ?? 0,
 					Duration = service.Duration ?? 0,
-					IsCourse = (int)service.IsCourse
+					IsCourse = service.IsCourse ?? false
 				};
 				await _serviceRepository.CreateEntity(newService);
-				if (newService.IsCourse == (int)EnumTypeCourse.Package)
+				if (newService.IsCourse == true)
 				{
+					var sessionInterval = service.SessionInterval ?? 1;
+					const decimal discountRate = 0.85m;
+
+					var totalPriceOriginal = (service.Price ?? 0) / discountRate;
+
+					var pricePerSession = sessionInterval > 0
+						? totalPriceOriginal / sessionInterval
+						: (service.Price ?? 0);
+
 					var newPlan = new TreatmentPlanEntity
 					{
 						ServiceId = newService.Id,
-						DeleteStatus = false
+						DeleteStatus = false,
+						PlanName = $"Gói {sessionInterval} buổi {service.ServiceName}",
+						TotalSessions = sessionInterval,
+						Price = pricePerSession, 
+						SessionInterval = sessionInterval,
+						Description = $"Gói liệu trình {sessionInterval} buổi - Tiết kiệm 15%"
 					};
 					await _treatmentPlanRepository.CreateEntity(newPlan);
 
-					var newSession = new TreatmentSessionEntity
+					var treatmentSessions = new List<TreatmentSessionEntity>();
+					for (int i = 1; i <= sessionInterval; i++)
 					{
-						TreatmentPlanId = newPlan.Id,
-						DeleteStatus = false
-					};
-					await _treatmentSessionRepository.CreateEntity(newSession);
+						treatmentSessions.Add(new TreatmentSessionEntity
+						{
+							TreatmentPlanId = newPlan.Id,
+							SessionNumber = i,
+							SessionName = $"Buổi {i}: {service.ServiceName}",
+							Description = $"Buổi thứ {i} của gói liệu trình {service.ServiceName}",
+							Duration = service.Duration ?? 0,
+							DeleteStatus = false
+						});
+					}
+					if (treatmentSessions.Any())
+					{
+						await _treatmentSessionRepository.CreateRangeEntities(treatmentSessions);
+						_logger.LogInformation(
+							"Created {Count} treatment sessions for TreatmentPlan {PlanId}",
+							treatmentSessions.Count,
+							newPlan.Id);
+					}
 				}
 				return true;
 			}
@@ -144,7 +173,7 @@ namespace Aesthetics.Data.AestheticsServices
 					return false;
 				}
 
-				int oldIsCourse = (int)existingService.IsCourse;
+				bool? oldIsCourse = existingService.IsCourse;
 
 				if (!string.IsNullOrWhiteSpace(service.ServiceName)
 					&& existingService.ServiceName != service.ServiceName)
@@ -171,7 +200,7 @@ namespace Aesthetics.Data.AestheticsServices
 					existingService.Duration = service.Duration.Value;
 
 				if (service.IsCourse.HasValue)
-					existingService.IsCourse = (int)service.IsCourse.Value;
+					existingService.IsCourse = service.IsCourse.Value;
 
 				if (!string.IsNullOrWhiteSpace(service.ServiceImage)
 					&& existingService.ServiceImage != service.ServiceImage)
@@ -187,7 +216,7 @@ namespace Aesthetics.Data.AestheticsServices
 					return false;
 				}
 
-				await HandleTreatmentPlanByCourse(existingService.Id, oldIsCourse, existingService.IsCourse ?? 0);
+				await HandleTreatmentPlanByCourse(existingService.Id, oldIsCourse, existingService.IsCourse ?? false);
 				_logger.LogInformation("Update Service success: Id {Id}", service.Id);
 				return true;
 			}
@@ -198,16 +227,17 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-		private async Task HandleTreatmentPlanByCourse(int serviceId, int oldIsCourse, int newIsCourse)
+		private async Task HandleTreatmentPlanByCourse(int serviceId, bool? oldIsCourse, bool? newIsCourse)
 		{
+			// ✅ So sánh bool? với bool?
 			if (oldIsCourse == newIsCourse)
 				return;
 
 			var plans = await _treatmentPlanRepository
 				.FindByPredicate(x => x.ServiceId == serviceId);
 
-
-			if (newIsCourse == (int)EnumTypeCourse.Package)
+			// SINGLE → PACKAGE (newIsCourse == true)
+			if (newIsCourse == true)  // ✅ Sửa
 			{
 				if (!plans.Any())
 				{
@@ -246,8 +276,8 @@ namespace Aesthetics.Data.AestheticsServices
 				}
 			}
 
-			// PACKAGE → SINGLE
-			else if (newIsCourse == (int)EnumTypeCourse.Single)
+			// PACKAGE → SINGLE (newIsCourse == false)
+			else if (newIsCourse == false)  // ✅ Sửa
 			{
 				if (!plans.Any())
 					return;
@@ -431,6 +461,11 @@ namespace Aesthetics.Data.AestheticsServices
 												  x.ServiceName.ToLowerInvariant().Contains(name));
 				}
 
+				if (service.IsCourse.HasValue)
+				{
+					predicate = predicate.And(x => x.IsCourse == service.IsCourse.Value);
+				}
+
 				// Load tất cả record khớp predicate trước (giống product)
 				var allMatching = await _serviceRepository.FindByPredicate(predicate);
 				var allMatchingList = allMatching.ToList();
@@ -464,12 +499,10 @@ namespace Aesthetics.Data.AestheticsServices
 				// Lọc thêm trong memory nếu có filter trên ServiceTypeName
 				var filteredResults = allMatchingList.AsQueryable();
 
-				if (!string.IsNullOrWhiteSpace(service.ServiceTypeName))
+				if (service.ServiceTypeId.HasValue)
 				{
-					var typeName = service.ServiceTypeName.Trim().ToLowerInvariant();
-					filteredResults = filteredResults.Where(x => x.ServiceType != null &&
-																x.ServiceType.ServiceTypeName != null &&
-																x.ServiceType.ServiceTypeName.ToLowerInvariant().Contains(typeName));
+					filteredResults = filteredResults.Where(x =>
+						x.ServiceTypeId == service.ServiceTypeId.Value);
 				}
 
 				var finalResults = filteredResults.ToList();

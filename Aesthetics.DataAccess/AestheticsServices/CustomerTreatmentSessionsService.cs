@@ -184,10 +184,6 @@ namespace Aesthetics.Data.AestheticsServices
 				{
 					customerPlan.Status = newPlanStatus;
 
-					// Cập nhật số buổi đã hoàn thành
-					int completedSessions = allSessions.Count(s => s.Status == "HoanThanh");
-					customerPlan.CompletedSessions = completedSessions;
-
 					var planUpdated = await _customerTreatmentPlansRepository.UpdateEntity(customerPlan);
 					if (!planUpdated)
 					{
@@ -196,7 +192,7 @@ namespace Aesthetics.Data.AestheticsServices
 					}
 
 					_logger.LogInformation("UpdateCustomerTreatmentPlanStatus: Plan {PlanId} status changed from {OldStatus} to {NewStatus}, CompletedSessions: {CompletedSessions}",
-						customerTreatmentPlanId, oldPlanStatus, newPlanStatus, completedSessions);
+						customerTreatmentPlanId, oldPlanStatus, newPlanStatus);
 
 					// NOTE: Inventory đã được cập nhật ngay khi từng session hoàn thành
 					// Không cần đợi đến khi cả plan hoàn thành

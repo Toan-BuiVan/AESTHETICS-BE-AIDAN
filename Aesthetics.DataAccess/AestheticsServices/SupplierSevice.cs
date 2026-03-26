@@ -87,22 +87,39 @@ namespace Aesthetics.Data.AestheticsServices
 		{
 			try
 			{
-				Expression<Func<SupplierEntity, bool>> predicate = x => true;  
+				Expression<Func<SupplierEntity, bool>> predicate = x => true;
 
 				if (!string.IsNullOrWhiteSpace(searchSupplier.SupplierName))
 				{
 					predicate = x => x.SupplierName.ToLower().Contains(searchSupplier.SupplierName.ToLower());
 				}
+
 				var allMatching = await _supplierRepository.FindByPredicate(predicate);
 				var totalCount = allMatching.Count;
 
-				var pagedData = allMatching
-					.OrderBy(x => x.SupplierName)  
-					.Skip((searchSupplier.PageNo - 1) * searchSupplier.PageSize)
-					.Take(searchSupplier.PageSize)
-					.ToList();
+				List<SupplierEntity> result;
 
-				return new BaseDataCollection<SupplierEntity>(pagedData, totalCount, searchSupplier.PageNo, searchSupplier.PageSize);
+				if (searchSupplier.PageNo == 0 && searchSupplier.PageSize == 0)
+				{
+					result = allMatching
+						.OrderBy(x => x.SupplierName)
+						.ToList();
+				}
+				else
+				{
+					result = allMatching
+						.OrderBy(x => x.SupplierName)
+						.Skip((searchSupplier.PageNo - 1) * searchSupplier.PageSize)
+						.Take(searchSupplier.PageSize)
+						.ToList();
+				}
+
+				return new BaseDataCollection<SupplierEntity>(
+					result,
+					totalCount,
+					searchSupplier.PageNo,
+					searchSupplier.PageSize
+				);
 			}
 			catch (Exception ex)
 			{

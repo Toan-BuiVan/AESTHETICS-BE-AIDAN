@@ -79,7 +79,8 @@ namespace Aesthetics.Entities.Entities
 		public virtual ICollection<ClinicStaffEntity> ClinicStaffs { get; set; } = [];
 		public virtual ICollection<AppointmentAssignmentEntity> AppointmentAssignments { get; set; } = [];
 		public virtual ICollection<StaffShiftEntity> StaffShifts { get; set; } = [];
+		public virtual ICollection<InvoiceEntity> Invoices { get; set; } = [];
 		public virtual ICollection<PerformanceLogEntity> PerformanceLogs { get; set; } = [];
-		public virtual ICollection<CustomerTreatmentSessionEntity> CustomerTreatmentSessions { get; set; } = [];
+		//public virtual ICollection<CustomerTreatmentSessionEntity> CustomerTreatmentSessions { get; set; } = [];
 	}
 }

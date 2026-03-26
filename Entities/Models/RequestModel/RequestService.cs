@@ -21,7 +21,10 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public decimal? Price { get; set; } = 0;
 
 		public int? Duration { get; set; } = 0;
-		public EnumTypeCourse? IsCourse { get; set; }
+
+		public int? SessionInterval { get; set; }
+
+		public bool? IsCourse { get; set; }
 	}
 
 	public class UpdateService
@@ -39,7 +42,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public decimal? Price { get; set; } = 0;
 
 		public int? Duration { get; set; } = 0;
-		public EnumTypeCourse? IsCourse { get; set; }
+		public bool? IsCourse { get; set; }
 	}
 
 	public class DeleteService
@@ -51,7 +54,8 @@ namespace Aesthetics.Entities.Models.RequestModel
 	{
 		public int? Id { get; set; }
 		public string? ServiceName { get; set; }
-		public string? ServiceTypeName { get; set; }
+		public int? ServiceTypeId { get; set; }
+		public bool? IsCourse { get; set; }
 	}
 
 	public class exportservice 

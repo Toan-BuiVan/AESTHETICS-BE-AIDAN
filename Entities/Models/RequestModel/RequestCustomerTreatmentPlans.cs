@@ -7,7 +7,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public int? CustomerId { get; set; }
 		public int? StaffId { get; set; }
 		public int? TreatmentPlanId { get; set; }
-		public DateTime? StartDate { get; set; }
+		public List<int>? TreatmentSessionIds { get; set; }
 		public bool? IsFullPackage { get; set; }
 		public string? Notes { get; set; }
 		public int? VoucherId { get; set; }

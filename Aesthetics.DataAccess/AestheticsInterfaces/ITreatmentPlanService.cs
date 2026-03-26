@@ -17,6 +17,6 @@ namespace Aesthetics.Data.AestheticsInterfaces
 
 		Task<bool> delete(DeleteTreatmentPlan plan);
 
-		Task<BaseDataCollection<TreatmentPlanEntity>> getlist(TreatmentPlanGet plan);
+		Task<BaseDataCollection<TreatmentPlanResponseModel>> getlist(TreatmentPlanGet searchPlan);
 	}
 }

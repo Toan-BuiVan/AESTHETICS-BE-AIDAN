@@ -45,9 +45,6 @@ namespace Aesthetics.Entities.Entities
 		[Column(TypeName = "decimal(18,2)")]
 		public decimal? CostPrice { get; set; }
 
-		/// <summary>Trạng thái của sản phẩm</summary>
-		public string? Status { get; set; }
-
 		// Navigation properties
 		[ForeignKey(nameof(ServiceTypeId))]
 		public virtual ServiceTypeEntity? ServiceType { get; set; }
@@ -58,6 +55,7 @@ namespace Aesthetics.Entities.Entities
 		public virtual ICollection<SessionProductEntity> SessionProducts { get; set; } = [];
 		public virtual ICollection<CommentEntity> Comments { get; set; } = [];
 		public virtual ICollection<CartProductEntity> CartProductEntitys { get; set; } = [];
+		public virtual ICollection<InvoiceEntity> Invoices { get; set; } = [];
 		public virtual ICollection<InvoiceDetailEntity> InvoiceDetails { get; set; } = [];
 	}
 }

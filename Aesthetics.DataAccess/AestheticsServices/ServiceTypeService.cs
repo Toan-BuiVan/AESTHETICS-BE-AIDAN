@@ -1,6 +1,7 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Data.RepositoryInterfaces;
 using Aesthetics.Entities.Entities;
+using Aesthetics.Entities.Enum;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
 using LinqKit;
@@ -39,7 +40,7 @@ namespace Aesthetics.Data.AestheticsServices
 				var entity = new ServiceTypeEntity
 				{
 					ServiceTypeName = serviceType.ServiceTypeName,
-					ServiceCategory = serviceType.ServiceCategory.Trim(),
+					ServiceCategory = (int)serviceType.ServiceCategory,
 					Description = serviceType.Description.Trim(),
 					DeleteStatus = false
 				};
@@ -50,6 +51,12 @@ namespace Aesthetics.Data.AestheticsServices
 					_logger.LogError("Create ServiceType failed at repository level: {ServiceTypeName}", serviceType.ServiceTypeName);
 					return false;
 				}
+				var clinic = new ClinicEntity
+				{
+					ServiceTypeId = entity.Id,
+					ClinicName = "Phòng khám" + serviceType.ServiceTypeName,
+					ClinicStatus = true
+				};
 
 				_logger.LogInformation("Create ServiceType success: {ServiceTypeName}", serviceType.ServiceTypeName);
 				return true;
@@ -106,6 +113,12 @@ namespace Aesthetics.Data.AestheticsServices
 					predicate = predicate.And(x => x.ServiceTypeName.ToLower().Contains(searchServiceType.ServiceTypeName.ToLower()));
 				}
 
+				if (searchServiceType.ServiceCategory.HasValue)
+				{
+					predicate = predicate.And(x =>
+						x.ServiceCategory == (int)searchServiceType.ServiceCategory.Value);
+				}
+
 				var allMatching = await _serviceTypeRepository.FindByPredicate(predicate);
 				var totalCount = allMatching.Count;
 
@@ -148,8 +161,8 @@ namespace Aesthetics.Data.AestheticsServices
 				if (!string.IsNullOrEmpty(serviceType.ServiceTypeName))
 					existingServiceType.ServiceTypeName = serviceType.ServiceTypeName;
 
-				if (!string.IsNullOrEmpty(serviceType.ServiceCategory))
-					existingServiceType.ServiceCategory = serviceType.ServiceCategory.Trim();
+				if (serviceType.ServiceCategory.HasValue)
+					existingServiceType.ServiceCategory = (int)serviceType.ServiceCategory.Value;
 
 				if (!string.IsNullOrEmpty(serviceType.Description))
 					existingServiceType.Description = serviceType.Description.Trim();

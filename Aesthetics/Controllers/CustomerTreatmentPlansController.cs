@@ -22,7 +22,7 @@ namespace Aesthetics.Controllers
 		public async Task<IActionResult> Create([FromBody] CreateCustomerTreatment treatment)
 		{
 			var result = await _customerTreatmentPlansService.create(treatment);
-			return Ok(new { success = result });
+			return Ok( result );
 		}
 
 		[HttpPost("updatecustomertreatmentplan")]

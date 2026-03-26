@@ -17,7 +17,7 @@ namespace Aesthetics.Entities.Entities
 
 		/// <summary>Phân loại: 'DichVu' hoặc 'SanPham'</summary>
 		[MaxLength(20)]
-		public string? ServiceCategory { get; set; }
+		public int? ServiceCategory { get; set; }
 
 		/// <summary>Mô tả chi tiết về loại dịch vụ</summary>
 		public string? Description { get; set; }

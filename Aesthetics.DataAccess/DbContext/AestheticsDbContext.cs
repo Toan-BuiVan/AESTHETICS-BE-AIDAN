@@ -357,17 +357,54 @@ namespace Aesthetics.Data.AestheticsDbContext
 				.HasForeignKey(cts => cts.TreatmentSessionId)
 				.OnDelete(DeleteBehavior.NoAction);
 
-			builder.Entity<CustomerTreatmentSessionEntity>()
-				.HasOne(cts => cts.Appointment)
-				.WithOne(a => a.CustomerTreatmentSession)
-				.HasForeignKey<CustomerTreatmentSessionEntity>(cts => cts.AppointmentId)
+			//builder.Entity<CustomerTreatmentSessionEntity>()
+			//	.HasOne(cts => cts.Appointment)
+			//	.WithOne(a => a.CustomerTreatmentSession)
+			//	.HasForeignKey<CustomerTreatmentSessionEntity>(cts => cts.AppointmentId)
+			//	.OnDelete(DeleteBehavior.SetNull);
+
+			//builder.Entity<CustomerTreatmentSessionEntity>()
+			//	.HasOne(cts => cts.Staff)
+			//	.WithMany(s => s.CustomerTreatmentSessions)
+			//	.HasForeignKey(cts => cts.StaffId)
+			//	.OnDelete(DeleteBehavior.SetNull);
+
+			builder.Entity<InvoiceEntity>()
+			.HasOne(i => i.Voucher)
+			.WithMany(v => v.Invoices)
+			.HasForeignKey(i => i.VoucherId)
+			.OnDelete(DeleteBehavior.SetNull);
+
+			// Thêm các configuration cho InvoiceEntity mà bị thiếu
+			builder.Entity<InvoiceEntity>()
+				.HasOne<TreatmentPlanEntity>()
+				.WithMany(tp => tp.Invoices)
+				.HasForeignKey(i => i.TreatmentPlanId)
 				.OnDelete(DeleteBehavior.SetNull);
 
-			builder.Entity<CustomerTreatmentSessionEntity>()
-				.HasOne(cts => cts.Staff)
-				.WithMany(s => s.CustomerTreatmentSessions)
-				.HasForeignKey(cts => cts.StaffId)
+			builder.Entity<InvoiceEntity>()
+				.HasOne<ServiceEntity>()
+				.WithMany(s => s.Invoices)
+				.HasForeignKey(i => i.ServiceId)
 				.OnDelete(DeleteBehavior.SetNull);
+
+			builder.Entity<InvoiceEntity>()
+				.HasOne<ProductEntity>()
+				.WithMany(p => p.Invoices)
+				.HasForeignKey(i => i.ProductId)
+				.OnDelete(DeleteBehavior.SetNull);
+
+			builder.Entity<InvoiceEntity>()
+				.HasOne(i => i.Staff)
+				.WithMany(s => s.Invoices)
+				.HasForeignKey(i => i.StaffId)
+				.OnDelete(DeleteBehavior.SetNull);
+
+			builder.Entity<InvoiceDetailEntity>()
+				.HasOne(id => id.Invoice)
+				.WithMany(i => i.InvoiceDetails)
+				.HasForeignKey(id => id.InvoiceId)
+				.OnDelete(DeleteBehavior.Cascade);
 		}
 
 		public DbSet<AccountEntity> Accounts { get; set; }

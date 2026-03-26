@@ -1,6 +1,7 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Data.AestheticsInterfaces.TokenService;
 using Aesthetics.Data.RepositoryInterfaces;
+using Aesthetics.Data.RepositoryServices;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
@@ -31,17 +32,21 @@ namespace Aesthetics.Data.AestheticsServices
 	{
 		private readonly ILogger<AuthenticationService> _logger;
 		private readonly IAuthenticationRepository _authenticationRepository;
+		private readonly ICustomerRepository _customerRepository;
+		private readonly IDistributedCache _cache;
+		private readonly ITokenService _tokenService;
 		private Microsoft.Extensions.Configuration.IConfiguration _configuration;
 		private IHttpContextAccessor _httpContextAccessor;
-		private readonly IDistributedCache _cache;
-		private ITokenService _tokenService;
+		private readonly IStaffRepository _staffRepository;
 
 		public AuthenticationService(ILogger<AuthenticationService> logger
 			, IAuthenticationRepository authenticationRepository
 			, Microsoft.Extensions.Configuration.IConfiguration configuration
 			, IHttpContextAccessor httpContextAccessor
 			, IDistributedCache cache
-			, ITokenService tokenService)
+			, ITokenService tokenService
+			, ICustomerRepository customerRepository
+			, IStaffRepository staffRepository)
 		{
 			_logger = logger;
 			_authenticationRepository = authenticationRepository;
@@ -49,6 +54,8 @@ namespace Aesthetics.Data.AestheticsServices
 			_httpContextAccessor = httpContextAccessor;
 			_cache = cache;
 			_tokenService = tokenService;
+			_customerRepository = customerRepository;
+			_staffRepository = staffRepository;
 		}
 		public async Task<UserLoginResponse> login(RequestLogin request)
 		{
@@ -60,12 +67,38 @@ namespace Aesthetics.Data.AestheticsServices
 				{
 					return responseData;
 				}
+
+				// Get customer info if user is a customer
+				CustomerEntity? customer = null;
+				if (user.Id > 0)
+				{
+					var customers = await _customerRepository.FindByPredicate(x => x.AccountId == user.Id);
+					customer = customers.FirstOrDefault();
+				}
+
+				StaffEntity? staff = null;
+				if (user.Id > 0)
+				{
+					var staffs = await _staffRepository.FindByPredicate(x => x.AccountId == user.Id);
+					staff = staffs.FirstOrDefault();
+				}
+
 				var authClaims = new List<Claim>
 				{
 					new Claim(ClaimTypes.Name, user.UserName),
 					new Claim(ClaimTypes.PrimarySid, user.Id.ToString()),
 					new Claim(ClaimTypes.Role, user.Role.ToString())
 				};
+
+				// Add CustomerId if customer exists
+				if (customer != null && customer.Id > 0)
+				{
+					authClaims.Add(new Claim("CustomerId", customer.Id.ToString()));
+				}
+				if (staff != null && staff.Id > 0)
+				{
+					authClaims.Add(new Claim("StaffId", staff.Id.ToString()));
+				}
 
 				var newToken = await _tokenService.CreateToken(authClaims);
 				_ = int.TryParse(_configuration["JWT:RefreshTokenValidityInDays"], out int refreshTokenValidityInDays);

@@ -16,7 +16,7 @@ using XAct.Expressions;
 
 namespace Aesthetics.Data.AestheticsServices
 {
-    public class ProductService : IProductService
+	public class ProductService : IProductService
 	{
 		private readonly ILogger<ProductService> _logger;
 		private readonly IProductRepository _productRepository;
@@ -47,6 +47,28 @@ namespace Aesthetics.Data.AestheticsServices
 		{
 			try
 			{
+				// Validate ServiceTypeId exists if provided
+				if (product.ServiceTypeId != null)
+				{
+					var serviceTypeExists = await _serviceTypeRepository.GetById(product.ServiceTypeId);
+					if (serviceTypeExists == null)
+					{
+						_logger.LogWarning("Create Product failed: ServiceTypeId {ServiceTypeId} does not exist", product.ServiceTypeId);
+						return false;
+					}
+				}
+
+				// Validate SupplierId exists if provided
+				if (product.SupplierId != null)
+				{
+					var supplierExists = await _supplierRepository.GetById(product.SupplierId);
+					if (supplierExists == null)
+					{
+						_logger.LogWarning("Create Product failed: SupplierId {SupplierId} does not exist", product.SupplierId);
+						return false;
+					}
+				}
+
 				string processedImages = product.ProductImages;
 				if (!string.IsNullOrEmpty(product.ProductImages))
 				{
@@ -62,16 +84,26 @@ namespace Aesthetics.Data.AestheticsServices
 					SellingPrice = product.SellingPrice,
 					Quantity = product.Quantity,
 					Unit = product.Unit,
-					Status = "ChoPheDuyet",
 					MinimumStock = product.MinimumStock,
 					ProductImages = processedImages,
 					CostPrice = product.CostPrice
 				};
 
-				await _productRepository.CreateEntity(newProduct);
+				var productCreated = await _productRepository.CreateEntity(newProduct);
+				if (!productCreated)
+				{
+					_logger.LogError("Failed to create product: {ProductName}", product.ProductName);
+					return false;
+				}
 
 				// Tạo Invoice và InvoiceDetail với Type "NhapHang"
-				await CreatePurchaseInvoiceForProduct(newProduct, product);
+				var invoiceCreated = await CreatePurchaseInvoiceForProduct(newProduct, product);
+				if (!invoiceCreated)
+				{
+					_logger.LogWarning("Failed to create purchase invoice for product: {ProductName}", product.ProductName);
+					// Decide: return false if invoice is mandatory, or continue if optional
+					// For now, we'll continue since product was created
+				}
 
 				return true;
 			}
@@ -85,7 +117,7 @@ namespace Aesthetics.Data.AestheticsServices
 		/// <summary>
 		/// Tạo hóa đơn nhập hàng cho sản phẩm mới được tạo
 		/// </summary>
-		private async Task CreatePurchaseInvoiceForProduct(ProductEntity newProduct, CreateProduct product)
+		private async Task<bool> CreatePurchaseInvoiceForProduct(ProductEntity newProduct, CreateProduct product)
 		{
 			try
 			{
@@ -106,8 +138,14 @@ namespace Aesthetics.Data.AestheticsServices
 					DeleteStatus = false
 				};
 
-				await _invoiceRepository.CreateEntity(invoice);
-				_logger.LogInformation("Created purchase invoice for product: ProductId {ProductId}, InvoiceId {InvoiceId}", 
+				var invoiceCreated = await _invoiceRepository.CreateEntity(invoice);
+				if (!invoiceCreated)
+				{
+					_logger.LogError("Failed to create purchase invoice for product: {ProductName}", newProduct.ProductName);
+					return false;
+				}
+
+				_logger.LogInformation("Created purchase invoice for product: ProductId {ProductId}, InvoiceId {InvoiceId}",
 					newProduct.Id, invoice.Id);
 
 				// Tạo InvoiceDetail
@@ -124,15 +162,22 @@ namespace Aesthetics.Data.AestheticsServices
 					DeleteStatus = false
 				};
 
-				await _invoiceDetailsRepository.CreateEntity(detail);
-				_logger.LogInformation("Created purchase invoice detail: ProductId {ProductId}, Quantity {Quantity}, Total {Total}", 
+				var detailCreated = await _invoiceDetailsRepository.CreateEntity(detail);
+				if (!detailCreated)
+				{
+					_logger.LogError("Failed to create purchase invoice detail for product: {ProductName}", newProduct.ProductName);
+					return false;
+				}
+
+				_logger.LogInformation("Created purchase invoice detail: ProductId {ProductId}, Quantity {Quantity}, Total {Total}",
 					newProduct.Id, product.Quantity, totalMoney);
+
+				return true;
 			}
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "Error creating purchase invoice for product: {ProductName}", newProduct.ProductName);
-				// Không throw exception để không làm fail việc tạo product
-				// Có thể xem xét rollback product nếu cần thiết
+				return false;
 			}
 		}
 
@@ -231,11 +276,6 @@ namespace Aesthetics.Data.AestheticsServices
 				if (product.CostPrice.HasValue)
 				{
 					existingProduct.CostPrice = product.CostPrice.Value;
-				}
-
-				if (product.Status != null)
-				{
-					existingProduct.Status = product.Status;
 				}
 
 				var updated = await _productRepository.UpdateEntity(existingProduct);
@@ -407,7 +447,7 @@ namespace Aesthetics.Data.AestheticsServices
 				if (product.ProductIds != null && product.ProductIds.Any())
 				{
 					// Filter by the provided list of product IDs
-					predicate = predicate.And(x => product.ProductIds.Contains(x.Id));
+				 predicate = predicate.And(x => product.ProductIds.Contains(x.Id));
 					_logger.LogInformation("Exporting {Count} specific products by IDs", product.ProductIds.Count);
 				}
 				else
@@ -505,7 +545,6 @@ namespace Aesthetics.Data.AestheticsServices
 						worksheet.Cells[row, 9].Value = finalResults[i].MinimumStock;
 						worksheet.Cells[row, 10].Value = finalResults[i].ProductImages;
 						worksheet.Cells[row, 11].Value = finalResults[i].CostPrice;
-						worksheet.Cells[row, 12].Value = finalResults[i].Status;
 					}
 
 					// Format the worksheet
