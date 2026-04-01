@@ -73,8 +73,13 @@ namespace Aesthetics.Entities.Entities
 		[ForeignKey(nameof(VoucherId))]
 		public virtual VoucherEntity? Voucher { get; set; }
 
+		[ForeignKey(nameof(ServiceId))]
+		public virtual ServiceEntity? Service { get; set; }
+
+		[ForeignKey(nameof(TreatmentPlanId))]
+		public virtual TreatmentPlanEntity? TreatmentPlan { get; set; }
+
 		public virtual ICollection<InvoiceDetailEntity> InvoiceDetails { get; set; } = [];
 		public virtual ICollection<PerformanceLogEntity> PerformanceLogs { get; set; } = [];
-		//public virtual ICollection<CustomerTreatmentPlanEntity> CustomerTreatmentPlans { get; set; } = [];
 	}
 }

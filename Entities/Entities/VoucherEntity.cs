@@ -18,9 +18,6 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>Mô tả voucher</summary>
 		public string? Description { get; set; }
 
-		/// <summary>URL hình ảnh voucher</summary>
-		public string? VoucherImage { get; set; }
-
 		/// <summary>Phần trăm giảm giá: VD 20.00 = giảm 20%</summary>
 		[Column(TypeName = "decimal(5,2)")]
 		public decimal? DiscountValue { get; set; }

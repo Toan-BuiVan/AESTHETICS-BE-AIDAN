@@ -6,6 +6,7 @@ using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -24,6 +25,26 @@ namespace Aesthetics.Data.RepositoryServices
 			if (wallet != null)
 				return true;
 			return false;
+		}
+
+		public async Task<ICollection<WalletEntity>> GetWalletsByPredicateWithVoucherAsync(Expression<Func<WalletEntity, bool>> predicate)
+		{
+			try
+			{
+				var wallets = await _dbContext.Set<WalletEntity>()
+					.AsNoTracking()
+					.Where(predicate)
+					.Include(w => w.Voucher)
+					.ToListAsync();
+
+				_logger.LogInformation("GetWalletsByPredicateWithVoucherAsync - Count: {Count}", wallets.Count);
+				return wallets;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "GetWalletsByPredicateWithVoucherAsync - Exception: {E}", ex);
+				return [];
+			}
 		}
 	}
 }
