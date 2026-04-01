@@ -17,6 +17,7 @@ public class CartProductService : ICartProductService
 	private readonly ICartRepository _cartRepository;
 	private readonly ILogger<CartProductService> _logger;
 	private readonly ICustomerRepository _customerRepository;
+
 	public CartProductService(
 		ICartProductRepository cartProductRepository,
 		ICartRepository cartRepository,
@@ -33,53 +34,83 @@ public class CartProductService : ICartProductService
 	{
 		try
 		{
-			if (!request.CartId.HasValue || (!request.ProductId.HasValue && !request.ServiceId.HasValue))
+			// ✅ Validate request
+			if (!request.CustomerId.HasValue)
 			{
-				_logger.LogWarning("Create CartProduct failed: Missing required fields (CartId and either ProductId or ServiceId)");
+				_logger.LogWarning("Create CartProduct failed: Missing CustomerId");
 				return false;
 			}
 
-			Expression<Func<CartProductEntity, bool>> predicate = x => x.CartId == request.CartId.Value && x.DeleteStatus != true;
+			if (!request.ProductId.HasValue)
+			{
+				_logger.LogWarning("Create CartProduct failed: Missing ProductId");
+				return false;
+			}
 
-			if (request.ProductId.HasValue)
+			// ✅ Query lấy CartId từ CustomerId
+			var cart = (await _cartRepository.FindByPredicate(x =>
+				x.CustomerId == request.CustomerId.Value && !x.DeleteStatus)).FirstOrDefault();
+
+			if (cart == null)
 			{
-				predicate = predicate.And(x => x.ProductId == request.ProductId.Value && x.ServiceId == null);
+				_logger.LogWarning("Create CartProduct failed: Cart not found for CustomerId {CustomerId}", request.CustomerId);
+				return false;
 			}
-			else if (request.ServiceId.HasValue)
-			{
-				predicate = predicate.And(x => x.ServiceId == request.ServiceId.Value && x.ProductId == null);
-			}
+
+			int cartId = cart.Id;
+
+			// ✅ Build predicate để kiểm tra item tồn tại
+			Expression<Func<CartProductEntity, bool>> predicate = x =>
+				x.CartId == cartId &&
+				x.ProductId == request.ProductId.Value &&
+				!x.DeleteStatus;
 
 			var existingItems = await _cartProductRepository.FindByPredicate(predicate);
+
 			if (existingItems.Any())
 			{
+				// ✅ Item tồn tại → tăng quantity
 				var existingItem = existingItems.First();
-				existingItem.Quantity += 1;
+				existingItem.Quantity += request.Quantity ?? 1;
+
 				var updated = await _cartProductRepository.UpdateEntity(existingItem);
 				if (!updated)
 				{
-					_logger.LogError("Create CartProduct failed during update quantity for existing item: CartId {CartId} ", request.CartId, request.ProductId, request.ServiceId);
+					_logger.LogError("Create CartProduct failed during update quantity: CartId {CartId}, ProductId {ProductId}",
+						cartId, request.ProductId);
 					return false;
 				}
-				_logger.LogInformation("Create CartProduct success (quantity updated): CartId {CartId} ", request.CartId, request.ProductId, request.ServiceId);
+
+				_logger.LogInformation("Create CartProduct success (quantity updated): CartId {CartId}, ProductId {ProductId}, NewQuantity {Quantity}",
+					cartId, request.ProductId, existingItem.Quantity);
 				return true;
 			}
 
+			// ✅ Item không tồn tại → tạo mới
 			var newCartProduct = new CartProductEntity
 			{
-				CartId = request.CartId.Value,
+				CartId = cartId,
 				ProductId = request.ProductId,
-				ServiceId = request.ServiceId,
 				PriceAtAdd = request.PriceAtAdd ?? 0,
-				Quantity = 1
+				Quantity = request.Quantity ?? 1,
+				CreateDate = DateTime.UtcNow,
+				DeleteStatus = false
 			};
-			await _cartProductRepository.CreateEntity(newCartProduct);
-			_logger.LogInformation("Create CartProduct success (new item): CartId {CartId} ", request.CartId, request.ProductId, request.ServiceId);
+
+			var created = await _cartProductRepository.CreateEntity(newCartProduct);
+			if (!created)
+			{
+				_logger.LogError("Create CartProduct failed: Cannot create new item for CartId {CartId}", cartId);
+				return false;
+			}
+
+			_logger.LogInformation("Create CartProduct success (new item): CartId {CartId}, ProductId {ProductId}, Quantity {Quantity}",
+				cartId, request.ProductId, newCartProduct.Quantity);
 			return true;
 		}
 		catch (Exception ex)
 		{
-			_logger.LogError(ex, "Error creating CartProduct: CartId {CartId} ", request.CartId, request.ProductId, request.ServiceId);
+			_logger.LogError(ex, "Error creating CartProduct");
 			return false;
 		}
 	}
@@ -90,76 +121,104 @@ public class CartProductService : ICartProductService
 		{
 			_logger.LogInformation("Start deleting CartProduct");
 
-			if (!request.Id.HasValue)
+			// ✅ Validate
+			if (!request.CartProductId.HasValue)
 			{
-				_logger.LogWarning("Delete CartProduct failed: Missing Id or (ProductId or ServiceId)");
+				_logger.LogWarning("Delete CartProduct failed: Missing CartProductId");
 				return false;
 			}
 
-			var existingCartProduct = await _cartProductRepository.GetById(request.Id.Value);
+			var existingCartProduct = await _cartProductRepository.GetById(request.CartProductId.Value);
 			if (existingCartProduct == null)
 			{
-				_logger.LogWarning("Delete CartProduct failed: Not found with Id {Id}", request.Id);
+				_logger.LogWarning("Delete CartProduct failed: Not found with Id {Id}", request.CartProductId);
 				return false;
 			}
 
 			var deleted = await _cartProductRepository.DeleteEntitiesStatus(existingCartProduct);
 			if (!deleted)
 			{
-				_logger.LogError("Delete CartProduct failed at repository level: Id {Id} ", request.Id);
+				_logger.LogError("Delete CartProduct failed at repository level: Id {Id}", request.CartProductId);
 				return false;
 			}
 
-			_logger.LogInformation("Delete CartProduct success: Id {Id} ", request.Id);
+			_logger.LogInformation("Delete CartProduct success: Id {Id}", request.CartProductId);
 			return true;
 		}
 		catch (Exception ex)
 		{
-			_logger.LogError(ex, "Delete CartProduct exception: Id {Id} ", request.Id);
+			_logger.LogError(ex, "Delete CartProduct exception: Id {Id}", request.CartProductId);
 			return false;
 		}
 	}
 
-	public async Task<BaseDataCollection<CartProductEntity>> getlist(GetCartProduct request)
+	public async Task<BaseDataCollection<CartProductResponseModel>> getlist(GetCartProduct request)
 	{
 		try
 		{
-			if (!request.Id.HasValue)
+			// ✅ Validate
+			if (!request.CustomerId.HasValue)
 			{
 				_logger.LogWarning("GetList CartProduct failed: Missing CustomerId");
-				return new BaseDataCollection<CartProductEntity>(null, 0, 1, int.MaxValue);
+				return new BaseDataCollection<CartProductResponseModel>(null, 0, request.PageNo, request.PageSize);
 			}
 
-			var cart = await _customerRepository.GetById(request.Id.Value);
+			// ✅ Query lấy CartId từ CustomerId (gọi repository)
+			var carts = await _cartRepository.FindByPredicate(x =>
+				x.CustomerId == request.CustomerId.Value && !x.DeleteStatus);
+
+			var cart = carts.FirstOrDefault();
+
 			if (cart == null)
 			{
-				_logger.LogWarning("GetList CartProduct failed: Cart not found for CustomerId {CustomerId}", request.Id);
-				return new BaseDataCollection<CartProductEntity>(null, 0, 1, int.MaxValue);
+				_logger.LogWarning("GetList CartProduct failed: Cart not found for CustomerId {CustomerId}", request.CustomerId);
+				return new BaseDataCollection<CartProductResponseModel>(null, 0, request.PageNo, request.PageSize);
 			}
 
-			Expression<Func<CartProductEntity, bool>> predicate = x => x.CartId == cart.Id && x.DeleteStatus != true;
+			// ✅ Lấy CartProduct với Product được Include (repository xử lý)
+			var allMatching = await _cartProductRepository.GetCartProductsByCartIdAsync(cart.Id);
 
-			var allMatching = await _cartProductRepository.FindByPredicate(predicate);
-			var totalCount = allMatching.Count();
+			var totalCount = allMatching.Count;
+
+			// ✅ Mapping sang CartProductResponseModel + Phân trang
 			var pagedData = allMatching
-				.OrderByDescending(x => x.Id)
-				.ToList(); 
+				.Skip((request.PageNo - 1) * request.PageSize)
+				.Take(request.PageSize)
+				.Select(cp => new CartProductResponseModel
+				{
+					Id = cp.Id,
+					CartId = cp.CartId,
+					ProductId = cp.ProductId,
+					Quantity = cp.Quantity,
+					PriceAtAdd = cp.PriceAtAdd,
+					CreateDate = cp.CreateDate,
+					// Thông tin sản phẩm
+					ProductName = cp.Product?.ProductName,
+					ProductImages = cp.Product?.ProductImages,
+					Description = cp.Product?.Description,
+					SellingPrice = cp.Product?.SellingPrice,
+					Unit = cp.Product?.Unit
+				})
+				.ToList();
 
-			return new BaseDataCollection<CartProductEntity>(
+			_logger.LogInformation("GetList CartProduct success: CustomerId {CustomerId}, Total {Total}, Page {PageNo}/{PageSize}",
+				request.CustomerId, totalCount, request.PageNo, request.PageSize);
+
+			return new BaseDataCollection<CartProductResponseModel>(
 				pagedData,
 				totalCount,
-				1,
-				totalCount
+				request.PageNo,
+				request.PageSize
 			);
 		}
 		catch (Exception ex)
 		{
-			_logger.LogError(ex, "GetList CartProduct exception for CustomerId {CustomerId}", request.Id);
-			return new BaseDataCollection<CartProductEntity>(
+			_logger.LogError(ex, "GetList CartProduct exception for CustomerId {CustomerId}", request.CustomerId);
+			return new BaseDataCollection<CartProductResponseModel>(
 				null,
 				0,
-				1,
-				int.MaxValue
+				request.PageNo,
+				request.PageSize
 			);
 		}
 	}
@@ -168,34 +227,43 @@ public class CartProductService : ICartProductService
 	{
 		try
 		{
-			if (!request.Id.HasValue || !request.Quantity.HasValue)
+			// ✅ Validate
+			if (!request.CartProductId.HasValue)
 			{
-				_logger.LogWarning("Update CartProduct failed: Missing Id or Quantity");
+				_logger.LogWarning("Update CartProduct failed: Missing CartProductId");
 				return false;
 			}
 
-			var existingCartProduct = await _cartProductRepository.GetById(request.Id.Value);
+			if (!request.Quantity.HasValue)
+			{
+				_logger.LogWarning("Update CartProduct failed: Missing Quantity");
+				return false;
+			}
+
+			var existingCartProduct = await _cartProductRepository.GetById(request.CartProductId.Value);
 			if (existingCartProduct == null)
 			{
-				_logger.LogWarning("Update CartProduct failed: Not found with Id {Id}", request.Id);
+				_logger.LogWarning("Update CartProduct failed: Not found with Id {Id}", request.CartProductId);
 				return false;
 			}
 
+			// ✅ Cập nhật Quantity
 			existingCartProduct.Quantity = request.Quantity.Value;
 
 			var updated = await _cartProductRepository.UpdateEntity(existingCartProduct);
 			if (!updated)
 			{
-				_logger.LogError("Update CartProduct failed at repository level: Id {Id}", request.Id);
+				_logger.LogError("Update CartProduct failed at repository level: Id {Id}", request.CartProductId);
 				return false;
 			}
 
-			_logger.LogInformation("Update CartProduct success: Id {Id}", request.Id);
+			_logger.LogInformation("Update CartProduct success: Id {Id}, NewQuantity {Quantity}",
+				request.CartProductId, existingCartProduct.Quantity);
 			return true;
 		}
 		catch (Exception ex)
 		{
-			_logger.LogError(ex, "Update CartProduct exception: Id {Id}", request.Id);
+			_logger.LogError(ex, "Update CartProduct exception: Id {Id}", request.CartProductId);
 			return false;
 		}
 	}

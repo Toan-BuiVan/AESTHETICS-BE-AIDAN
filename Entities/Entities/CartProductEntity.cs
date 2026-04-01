@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Aesthetics.Entities.Entities
 {
-	[Table("CartProductEntitys")]
+	[Table("CartProducts")]
 	public class CartProductEntity : Aesthetics.Entities.BaseEntity.BaseEntity
 	{
 		/// <summary>FK → Carts: thuộc giỏ hàng nào</summary>
@@ -15,12 +15,6 @@ namespace Aesthetics.Entities.Entities
 
 		/// <summary>FK → Products: sản phẩm (null nếu là dịch vụ)</summary>
 		public int? ProductId { get; set; }
-
-		/// <summary>FK → Services: dịch vụ (null nếu là sản phẩm)</summary>
-		public int? ServiceId { get; set; }
-
-		/// <summary>FK → TreatmentPlans: gói liệu trình (null nếu mua lẻ)</summary>
-		public int? TreatmentPlanId { get; set; }
 
 		/// <summary>Số lượng</summary>
 		public int Quantity { get; set; } = 1;
@@ -38,11 +32,5 @@ namespace Aesthetics.Entities.Entities
 
 		[ForeignKey(nameof(ProductId))]
 		public virtual ProductEntity? Product { get; set; }
-
-		[ForeignKey(nameof(ServiceId))]
-		public virtual ServiceEntity? Service { get; set; }
-
-		[ForeignKey(nameof(TreatmentPlanId))]
-		public virtual TreatmentPlanEntity? TreatmentPlan { get; set; }
 	}
 }

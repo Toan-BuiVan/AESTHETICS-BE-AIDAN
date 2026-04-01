@@ -22,11 +22,16 @@ namespace Aesthetics.Entities.Entities
 		public DateTime? DateBirth { get; set; }
 
 		/// <summary>Giới tính: 0 = Nam, 1 = Nữ, 2 = Khác</summary>
-		public int? Sex { get; set; }
+		public string? Sex { get; set; }
 
 		/// <summary>Số điện thoại</summary>
 		[MaxLength(250)]
 		public string? Phone { get; set; }
+
+		/// <summary>Email (duy nhất)</summary>
+		[MaxLength(250)]
+		public string? Email { get; set; }
+
 
 		/// <summary>Địa chỉ</summary>
 		[MaxLength(250)]

@@ -44,18 +44,15 @@ namespace Aesthetics.Data.AestheticsServices
 					|| voucher.MaxValue <= 0 
 					|| voucher.AccumulatedPoints < 0 
 					|| voucher.RatingPoints < 0 
-					|| string.IsNullOrWhiteSpace(voucher.RankMember) 
-					|| string.IsNullOrWhiteSpace(voucher.VoucherImage))
+					|| string.IsNullOrWhiteSpace(voucher.RankMember))
 				{
 					return false;
 				}
-				var vouchersImagePath = await _commonService.BaseProcessingFunction64(voucher.VoucherImage);
 				var code = await _voucherRepository.GenCodeUnique();
 				var newVouchers = new VoucherEntity
 				{
 					Code = code,
 					Description = voucher.Description,
-					VoucherImage = vouchersImagePath,
 					DiscountValue = voucher.DiscountValue,
 					StartDate = voucher.StartDate,
 					EndDate = voucher.EndDate,
@@ -125,20 +122,8 @@ namespace Aesthetics.Data.AestheticsServices
 						.ToList();
 				}
 
-				if (voucher.StartDate.HasValue)
-				{
-					allMatching = allMatching
-						.Where(x => x.StartDate >= voucher.StartDate.Value)
-						.ToList();
-				}
-
-				if (voucher.EndDate.HasValue)
-				{
-					allMatching = allMatching
-						.Where(x => x.EndDate <= voucher.EndDate.Value)
-						.ToList();
-				}
-
+				// Only allow filtering by RankMember, remove StartDate and EndDate filters
+				// as they would override the validity check
 				if (!string.IsNullOrWhiteSpace(voucher.RankMember))
 				{
 					var rank = voucher.RankMember.ToLower();
@@ -197,12 +182,6 @@ namespace Aesthetics.Data.AestheticsServices
 					return false;
 				}
 
-				string vouchersImagePath = existing.VoucherImage;
-				if (!string.IsNullOrWhiteSpace(voucher.VoucherImage))
-				{
-					vouchersImagePath = await _commonService.BaseProcessingFunction64(voucher.VoucherImage);
-				}
-
 				existing.Description = voucher.Description;
 				existing.DiscountValue = voucher.DiscountValue;
 				existing.StartDate = voucher.StartDate;
@@ -212,7 +191,6 @@ namespace Aesthetics.Data.AestheticsServices
 				existing.RankMember = voucher.RankMember;
 				existing.RatingPoints = voucher.RatingPoints ?? 0;
 				existing.AccumulatedPoints = voucher.AccumulatedPoints ?? 0;
-				existing.VoucherImage = vouchersImagePath;
 				existing.IsActive = voucher.IsActive ?? false;
 
 				await _voucherRepository.UpdateEntity(existing);  

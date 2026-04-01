@@ -16,7 +16,7 @@ namespace Aesthetics.Entities.Models.ResponseModel
 
 		public DateTime? DateBirth { get; set; }
 
-		public int? Sex { get; set; }
+		public string? Sex { get; set; }
 
 		public string? Phone { get; set; }
 

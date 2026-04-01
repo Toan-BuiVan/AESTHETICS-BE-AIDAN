@@ -10,5 +10,6 @@ namespace Aesthetics.Data.RepositoryInterfaces
 {
     public interface ICartProductRepository : ICommonRepository<CartProductEntity>
 	{
+		Task<ICollection<CartProductEntity>> GetCartProductsByCartIdAsync(int cartId);
 	}
 }
