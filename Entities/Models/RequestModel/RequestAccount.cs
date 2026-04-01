@@ -20,7 +20,8 @@ namespace Aesthetics.Entities.Models.RequestModel
 	public class UpdateAccount
 	{
 		public int Id { get; set; }
-		public string? PassWord { get; set; }
+		public string? OriginPassWord { get; set; }
+		public string? NewPassWord { get; set; }
 	}
 
 	public class DeleteAccount

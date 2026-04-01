@@ -207,43 +207,77 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-		public async Task<bool> update(UpdateAccount account)
-		{
-			try
+			public async Task<bool> update(UpdateAccount account)
 			{
-				_logger.LogInformation("Start updating Account password");
-
-				var existingAccount = await _accountRepository.GetById(account.Id);
-				if (existingAccount == null)
+				try
 				{
-					_logger.LogWarning("Update Account failed: Not found with Id {Id}", account.Id);
+					_logger.LogInformation("Start updating Account password");
+
+					// ✅ Validate
+					if (account.Id <= 0)
+					{
+						_logger.LogWarning("Update Account failed: Invalid Id {Id}", account.Id);
+						return false;
+					}
+
+					if (string.IsNullOrWhiteSpace(account.NewPassWord))
+					{
+						_logger.LogWarning("Update Account failed: NewPassWord is empty. Id {Id}", account.Id);
+						return false;
+					}
+
+					// ✅ Get existing account
+					var existingAccount = await _accountRepository.GetById(account.Id);
+					if (existingAccount == null)
+					{
+						_logger.LogWarning("Update Account failed: Not found with Id {Id}", account.Id);
+						return false;
+					}
+
+					_logger.LogInformation("Update Account: Found account {AccountId} - UserName: {UserName}",
+						account.Id, existingAccount.UserName);
+
+					// ✅ Verify original password if provided
+					if (!string.IsNullOrWhiteSpace(account.OriginPassWord?.ToString()))
+					{
+						var encryptedOriginPassword = Security.EncryptPassWord(account.OriginPassWord.ToString());
+						if (existingAccount.PassWord != encryptedOriginPassword)
+						{
+							_logger.LogWarning("Update Account failed: Original password is incorrect. Id {Id}", account.Id);
+							return false;
+						}
+
+						_logger.LogInformation("Update Account: Original password verified for Id {Id}", account.Id);
+					}
+
+					// ✅ Check if new password is same as old password
+					var encryptedNewPassword = Security.EncryptPassWord(account.NewPassWord);
+					if (existingAccount.PassWord == encryptedNewPassword)
+					{
+						_logger.LogInformation("Update Account: New password is same as old password for Id {Id}", account.Id);
+						return false;
+					}
+
+					// ✅ Update password
+					existingAccount.PassWord = encryptedNewPassword;
+
+					var updated = await _accountRepository.UpdateEntity(existingAccount);
+					if (!updated)
+					{
+						_logger.LogError("Update Account failed at repository level: Id {Id}", account.Id);
+						return false;
+					}
+
+					_logger.LogInformation("Update Account password success: Id {Id}", account.Id);
+					return true;
+				}
+				catch (Exception ex)
+				{
+					_logger.LogError(ex, "Update Account password exception: Id {Id}. Exception Message: {Message}",
+						account.Id, ex.Message);
 					return false;
 				}
-
-				if (string.IsNullOrWhiteSpace(account.PassWord))
-				{
-					_logger.LogWarning("Update Account failed: Password is empty. Id {Id}", account.Id);
-					return false;
-				}
-
-				existingAccount.PassWord = account.PassWord;
-
-				var updated = await _accountRepository.UpdateEntity(existingAccount);
-				if (!updated)
-				{
-					_logger.LogError("Update Account failed at repository level: Id {Id}", account.Id);
-					return false;
-				}
-
-				_logger.LogInformation("Update Account password success: Id {Id}", account.Id);
-				return true;
 			}
-			catch (Exception ex)
-			{
-				_logger.LogError(ex, "Update Account password exception: Id {Id}", account.Id);
-				return false;
-			}
-		}
 
 		public async Task<AccountProfileResponseModel?> GetProfileByAccountIdAsync(int accountId)
 		{
@@ -307,6 +341,10 @@ namespace Aesthetics.Data.AestheticsServices
 						Phone = staff.Phone,
 						Address = staff.Address,
 						IDCard = staff.IDCard,
+						Sex = staff.Sex,
+						Email = staff.Email,
+						DateBirth = staff.DateBirth,
+					
 
 						IsDoctor = staff.IsDoctor ?? false,
 						StaffImage = staff.StaffImage,
