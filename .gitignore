@@ -104,3 +104,7 @@ node_modules/
 
 *.tmp
 *.temp
+# =========================
+# Images (Aesthetics upload)
+# =========================
+Aesthetics/wwwroot/Images/
