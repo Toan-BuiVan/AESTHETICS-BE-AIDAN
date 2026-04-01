@@ -11,8 +11,6 @@ namespace Aesthetics.Entities.Models.RequestModel
     {
 		public string? Description { get; set; }
 
-		public string? VoucherImage { get; set; }
-
 		public decimal DiscountValue { get; set; } = 0;
 
 		public DateTime StartDate { get; set; }
@@ -24,6 +22,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public decimal MaxValue { get; set; } = 0;
 
 		[StringLength(200)]
+		/*  Diamond, Gold, Silver, Bronze */
 		public string? RankMember { get; set; }
 
 		public int RatingPoints { get; set; } = 0;
@@ -37,8 +36,6 @@ namespace Aesthetics.Entities.Models.RequestModel
 	{
 		public int Id { get; set; }
 		public string? Description { get; set; }
-
-		public string? VoucherImage { get; set; }
 
 		public decimal? DiscountValue { get; set; } = 0;
 

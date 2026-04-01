@@ -8,28 +8,28 @@ namespace Aesthetics.Entities.Models.RequestModel
 {
     public class CreateCartProduct
     {
-		public int? CartId { get; set; }
+		public int? CustomerId { get; set; }
 
 		public int? ProductId { get; set; }
 
-		public int? ServiceId { get; set; }
+		public int? Quantity { get; set; }
 
 		public decimal? PriceAtAdd { get; set; }
 	}
 
 	public class UpdateCartProduct
 	{
-		public int? Id { get; set; }
+		public int? CartProductId { get; set; }
 		public int? Quantity { get; set; }
 	}
 
 	public class DeleteCartProduct
 	{
-		public int? Id { get; set; }
+		public int? CartProductId { get; set; }
 	}
 
 	public class GetCartProduct : BaseSearchModel
 	{
-		public int? Id { get; set; }
+		public int? CustomerId { get; set; }
 	}
 }

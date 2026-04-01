@@ -461,12 +461,16 @@ namespace Aesthetics.Data.AestheticsServices
 		{
 			try
 			{
+				// ✅ Validate input
 				if (dto == null || !dto.Id.HasValue)
 				{
 					_logger.LogWarning("DeleteCustomerTreatment: invalid payload");
 					return false;
 				}
 
+				_logger.LogInformation("DeleteCustomerTreatment started: PlanId {PlanId}", dto.Id);
+
+				// ✅ Get the plan
 				var existing = (await _customerTreatmentPlansRepository.FindByPredicate(x => x.Id == dto.Id.Value)).FirstOrDefault();
 				if (existing == null)
 				{
@@ -474,13 +478,47 @@ namespace Aesthetics.Data.AestheticsServices
 					return false;
 				}
 
-				await _customerTreatmentPlansRepository.DeleteRangeEntitiesStatus(existing);
+				// ✅ Get all related sessions before deleting the plan
+				var relatedSessions = await _customerTreatmentSessionsRepository
+					.FindByPredicate(x => x.CustomerTreatmentPlanId == dto.Id.Value && !x.DeleteStatus);
+
+				_logger.LogInformation("DeleteCustomerTreatment: Found {Count} active sessions for plan {PlanId}",
+					relatedSessions.Count(), dto.Id);
+
+				// ✅ Delete all related sessions
+				if (relatedSessions.Any())
+				{
+					foreach (var session in relatedSessions)
+					{
+						var sessionDeleted = await _customerTreatmentSessionsRepository.DeleteEntitiesStatus(session);
+						if (!sessionDeleted)
+						{
+							_logger.LogError("DeleteCustomerTreatment: Failed to delete session {SessionId} for plan {PlanId}",
+								session.Id, dto.Id);
+							return false;
+						}
+
+						_logger.LogInformation("DeleteCustomerTreatment: Session {SessionId} deleted successfully",
+							session.Id);
+					}
+				}
+
+				// ✅ Delete the plan
+				var planDeleted = await _customerTreatmentPlansRepository.DeleteEntitiesStatus(existing);
+				if (!planDeleted)
+				{
+					_logger.LogError("DeleteCustomerTreatment: Failed to delete plan {PlanId}", dto.Id);
+					return false;
+				}
+
+				_logger.LogInformation("DeleteCustomerTreatment: Success - Plan {PlanId} and {SessionCount} sessions deleted",
+					dto.Id, relatedSessions.Count());
 
 				return true;
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "DeleteCustomerTreatment: exception");
+				_logger.LogError(ex, "DeleteCustomerTreatment: exception for plan {PlanId}", dto.Id);
 				return false;
 			}
 		}

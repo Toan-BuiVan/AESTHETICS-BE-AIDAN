@@ -38,7 +38,7 @@ namespace Aesthetics.Entities.Entities
 
 		public virtual ICollection<TreatmentSessionEntity> TreatmentSessions { get; set; } = [];
 		public virtual ICollection<CustomerTreatmentPlanEntity> CustomerTreatmentPlans { get; set; } = [];
-		public virtual ICollection<CartProductEntity> CartProducts { get; set; } = [];
+		//public virtual ICollection<CartProductEntity> CartProducts { get; set; } = [];
 		public virtual ICollection<InvoiceDetailEntity> InvoiceDetails { get; set; } = [];
 		public virtual ICollection<InvoiceEntity> Invoices { get; set; } = [];
 	}

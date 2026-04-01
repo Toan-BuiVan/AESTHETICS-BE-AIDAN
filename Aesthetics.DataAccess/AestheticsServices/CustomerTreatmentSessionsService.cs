@@ -317,6 +317,11 @@ namespace Aesthetics.Data.AestheticsServices
 					return false;
 				}
 
+				_logger.LogInformation("DeleteCustomerTreatmentSession: Found session {SessionId} from plan {PlanId}",
+					requestCustomer.Id, existingSession.CustomerTreatmentPlanId);
+
+				int? parentPlanId = existingSession.CustomerTreatmentPlanId;
+
 				// 3. Soft delete the session
 				var deleted = await _customerTreatmentSessionsRepository.DeleteEntitiesStatus(existingSession);
 				if (!deleted)
@@ -325,14 +330,12 @@ namespace Aesthetics.Data.AestheticsServices
 					return false;
 				}
 
-				// 4. Update parent plan status if needed
-				if (existingSession.CustomerTreatmentPlanId.HasValue)
+				_logger.LogInformation("DeleteCustomerTreatmentSession: Session deleted successfully for Id {Id}", requestCustomer.Id);
+
+				// 4. Check if parent plan still has active sessions
+				if (parentPlanId.HasValue)
 				{
-					await UpdateCustomerTreatmentPlanStatus(
-						existingSession.CustomerTreatmentPlanId.Value,
-						existingSession.Status,
-						null
-					);
+					await CheckAndDeleteEmptyPlan(parentPlanId.Value);
 				}
 
 				_logger.LogInformation("DeleteCustomerTreatmentSession: Success for Id {Id}", requestCustomer.Id);
@@ -345,5 +348,57 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
+		/// <summary>
+		/// Kiểm tra xem CustomerTreatmentPlan có còn sessions không, nếu không có thì xóa plan
+		/// </summary>
+		private async Task CheckAndDeleteEmptyPlan(int customerTreatmentPlanId)
+		{
+			try
+			{
+				_logger.LogInformation("CheckAndDeleteEmptyPlan: Checking plan {PlanId} for remaining sessions", customerTreatmentPlanId);
+
+				// 1. Lấy tất cả sessions còn lại của plan này (chưa bị xóa)
+				var remainingSessions = await _customerTreatmentSessionsRepository
+					.FindByPredicate(x => x.CustomerTreatmentPlanId == customerTreatmentPlanId && !x.DeleteStatus);
+
+				// 2. Nếu còn sessions → không xóa plan
+				if (remainingSessions.Any())
+				{
+					_logger.LogInformation("CheckAndDeleteEmptyPlan: Plan {PlanId} still has {Count} active sessions",
+						customerTreatmentPlanId, remainingSessions.Count());
+
+					// Cập nhật status của plan dựa trên sessions còn lại
+					await UpdateCustomerTreatmentPlanStatus(customerTreatmentPlanId, null, null);
+					return;
+				}
+
+				// 3. Nếu không còn sessions → xóa plan
+				_logger.LogInformation("CheckAndDeleteEmptyPlan: Plan {PlanId} has no remaining active sessions, deleting plan",
+					customerTreatmentPlanId);
+
+				var plan = await _customerTreatmentPlansRepository.GetById(customerTreatmentPlanId);
+				if (plan == null)
+				{
+					_logger.LogWarning("CheckAndDeleteEmptyPlan: Plan not found {PlanId}", customerTreatmentPlanId);
+					return;
+				}
+
+				// Soft delete the plan
+				var planDeleted = await _customerTreatmentPlansRepository.DeleteEntitiesStatus(plan);
+				if (planDeleted)
+				{
+					_logger.LogInformation("CheckAndDeleteEmptyPlan: Plan {PlanId} deleted successfully because it had no remaining sessions",
+						customerTreatmentPlanId);
+				}
+				else
+				{
+					_logger.LogError("CheckAndDeleteEmptyPlan: Failed to delete empty plan {PlanId}", customerTreatmentPlanId);
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "CheckAndDeleteEmptyPlan: Exception for plan {PlanId}", customerTreatmentPlanId);
+			}
+		}
 	}
 }

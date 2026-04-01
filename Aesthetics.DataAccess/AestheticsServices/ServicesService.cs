@@ -456,9 +456,9 @@ namespace Aesthetics.Data.AestheticsServices
 
 				if (!string.IsNullOrWhiteSpace(service.ServiceName))
 				{
-					var name = service.ServiceName.Trim().ToLowerInvariant();
+					var name = service.ServiceName.ToLower();
 					predicate = predicate.And(x => x.ServiceName != null &&
-												  x.ServiceName.ToLowerInvariant().Contains(name));
+												  x.ServiceName.ToLower().Contains(name));
 				}
 
 				if (service.IsCourse.HasValue)

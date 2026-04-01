@@ -38,6 +38,7 @@ namespace Aesthetics.Data.AestheticsServices
 		private Microsoft.Extensions.Configuration.IConfiguration _configuration;
 		private IHttpContextAccessor _httpContextAccessor;
 		private readonly IStaffRepository _staffRepository;
+		private readonly IAccountSessionsRepository _account;
 
 		public AuthenticationService(ILogger<AuthenticationService> logger
 			, IAuthenticationRepository authenticationRepository
@@ -46,7 +47,8 @@ namespace Aesthetics.Data.AestheticsServices
 			, IDistributedCache cache
 			, ITokenService tokenService
 			, ICustomerRepository customerRepository
-			, IStaffRepository staffRepository)
+			, IStaffRepository staffRepository
+			, IAccountSessionsRepository account)
 		{
 			_logger = logger;
 			_authenticationRepository = authenticationRepository;
@@ -56,6 +58,7 @@ namespace Aesthetics.Data.AestheticsServices
 			_tokenService = tokenService;
 			_customerRepository = customerRepository;
 			_staffRepository = staffRepository;
+			_account = account;
 		}
 		public async Task<UserLoginResponse> login(RequestLogin request)
 		{
@@ -109,15 +112,25 @@ namespace Aesthetics.Data.AestheticsServices
 				var cachKey = "User_" + user.Id + "_" + DeviceName;
 				var user_Session = new AccountSessionEntity
 				{
-					Id = user.Id,
+					AccountId = user.Id,
 					Token = new JwtSecurityTokenHandler().WriteToken(newToken),
 					DeviceName = DeviceName,
 					IP = remoteIpAddress.ToString(),
 					CreateTime = DateTime.Now,
 					DeleteStatus = false
 				};
-				await _authenticationRepository.CreateEntity(user_Session);
-				var dataCachingJson = JsonConvert.SerializeObject(user_Session);
+				var sessionDataForCache = new
+				{
+					user_Session.Id,
+					user_Session.AccountId,
+					user_Session.Token,
+					user_Session.DeviceName,
+					user_Session.IP,
+					user_Session.CreateTime,
+					user_Session.DeleteStatus
+				};
+				await _account.CreateEntity(user_Session);
+				var dataCachingJson = JsonConvert.SerializeObject(sessionDataForCache);
 				var dataToCache = Encoding.UTF8.GetBytes(dataCachingJson);
 				DistributedCacheEntryOptions options = new DistributedCacheEntryOptions().SetAbsoluteExpiration(DateTime.Now.AddMinutes(5));
 				_cache.Set(cachKey, dataToCache, options);
