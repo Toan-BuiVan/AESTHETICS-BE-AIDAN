@@ -1,4 +1,4 @@
-using Aesthetics.Data.AestheticsInterfaces;
+﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
@@ -37,6 +37,16 @@ namespace Aesthetics.Controllers
 		{
 			var result = await _walletService.getlist(wallet);
 			return Ok(result);
+		}
+
+		/// <summary>
+		/// ✅ Đổi voucher bằng điểm
+		/// Người rank thấp có thể dùng điểm để đổi voucher ở rank cao hơn
+		/// </summary>
+		[HttpPost("exchangevoucher")]
+		public async Task<bool> ExchangeVoucher([FromBody] RequestExchangeVoucher request)
+		{
+			return await _walletService.ExchangeVoucherAsync(request);
 		}
 	}
 }

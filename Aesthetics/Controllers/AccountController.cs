@@ -14,9 +14,11 @@ namespace Aesthetics.Controllers
 	public class AccountController : ControllerBase
 	{
 		private readonly IAccountService _accountService;
-		public AccountController(IAccountService accountService)
+		private readonly IAccountSessionsService _accountSessionsService;
+		public AccountController(IAccountService accountService, IAccountSessionsService accountSessionsService)
 		{
 			_accountService = accountService;
+			_accountSessionsService = accountSessionsService;
 		}
 
 		[HttpPost("createaccount")]
@@ -44,9 +46,15 @@ namespace Aesthetics.Controllers
 		}
 
 		[HttpPost("getprofileaccount")]
-		public async Task<AccountProfileResponseModel?> getprofile([FromBody] int accountId)
+		public async Task<AccountProfileResponseModel?> getprofile(int accountId)
 		{
 			return await _accountService.GetProfileByAccountIdAsync(accountId);
+		}
+
+		[HttpPost("getaccountsession")]
+		public async Task<BaseDataCollection<AccountSessionEntity?>> getaccountsession(getSession session)
+		{
+			return await _accountSessionsService.getlist(session);
 		}
 	}
 }
