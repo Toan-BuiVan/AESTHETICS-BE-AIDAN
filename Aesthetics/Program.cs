@@ -1,9 +1,11 @@
 ﻿using Aesthetics.Data.AestheticsDbContext;
 using Aesthetics.Data.AestheticsInterfaces;
+using Aesthetics.Data.AestheticsInterfaces.AI;
 using Aesthetics.Data.AestheticsInterfaces.EmailService;
 using Aesthetics.Data.AestheticsInterfaces.ICommonService;
 using Aesthetics.Data.AestheticsInterfaces.TokenService;
 using Aesthetics.Data.AestheticsServices;
+using Aesthetics.Data.AestheticsServices.AI;
 using Aesthetics.Data.AestheticsServices.CommonService;
 using Aesthetics.Data.AestheticsServices.EmailService;
 using Aesthetics.Data.AestheticsServices.TokenService;
@@ -55,6 +57,7 @@ builder.Services.AddScoped<ITreatmentPlanRepository, TreatmentPlanRepository>();
 builder.Services.AddScoped<ITreatmentSessionRepository, TreatmentSessionRepository>();
 builder.Services.AddScoped<IVoucherRepository, VoucherRepository>();
 builder.Services.AddScoped<IWalletRepository, WalletRepository>();
+builder.Services.AddScoped<IAccountSessionsRepository, AccountSessionsRepository>();
 
 // Service
 builder.Services.AddScoped<ICommonService, CommonService>();
@@ -88,6 +91,17 @@ builder.Services.AddScoped<ITreatmentSessionService, TreatmentSessionService>();
 builder.Services.AddScoped<IVoucherService, VoucherService>();
 builder.Services.AddScoped<IWalletService, WalletService>();
 builder.Services.AddScoped<IStaffService, StaffService>();
+builder.Services.AddScoped<ICustomerService, CustomerService>();
+builder.Services.AddScoped<IAccountSessionsService, AccountSessionsService>();
+builder.Services.AddScoped<IAIFunctionCallingService, AIFunctionCallingService>();
+builder.Services.AddHttpClient<ILLMService, LLMService>()
+	.ConfigureHttpClient(client =>
+	{
+		client.Timeout = TimeSpan.FromMinutes(2);
+		client.DefaultRequestHeaders.Add("User-Agent", "Aesthetics-AI-Client");
+	});
+// → DI container tự động inject HttpClient vào LLMService
+
 
 builder.Services.AddHostedService<Aesthetics.Data.AestheticsServices.EmailService.AppointmentReminderBackgroundService>();
 builder.Services.AddDistributedMemoryCache();
