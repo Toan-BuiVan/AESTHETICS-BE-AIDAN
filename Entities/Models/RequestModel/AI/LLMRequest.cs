@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace Aesthetics.Entities.Models.RequestModel.AI
 {
@@ -7,9 +8,16 @@ namespace Aesthetics.Entities.Models.RequestModel.AI
 	/// </summary>
 	public class LLMRequest
 	{
-		public string Model { get; set; } = "gpt-4o-mini"; // hoặc "gpt-3.5-turbo"
+		[JsonPropertyName("model")]
+		public string Model { get; set; } = "gpt-4o-mini";
+
+		[JsonPropertyName("messages")]
 		public List<LLMMessage> Messages { get; set; } = new();
+
+		[JsonPropertyName("temperature")]
 		public int Temperature { get; set; } = 0;
+
+		[JsonPropertyName("max_tokens")]
 		public int MaxTokens { get; set; } = 2000;
 	}
 

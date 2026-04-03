@@ -13,3 +13,13 @@
 - Validate API responses before processing
 - Log all API requests and responses for debugging
 - Implement retry logic for transient failures
+
+### Service Layer Implementation
+- Services must use dependency injection for repositories and loggers
+- All database operations should be wrapped in try-catch blocks
+- Implement comprehensive logging for debugging (use ILogger)
+- Services should validate input data before processing
+- Return boolean or result objects rather than throwing exceptions where appropriate
+- Create invoice details automatically when creating an invoice
+- Filter and sort data consistently (e.g., newest first for lists)
+- Use Task-based async/await pattern throughout

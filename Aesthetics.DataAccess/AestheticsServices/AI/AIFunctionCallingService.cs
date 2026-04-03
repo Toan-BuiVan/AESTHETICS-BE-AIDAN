@@ -515,7 +515,7 @@ Ghi chú:
 					StartTime = appointmentDateTime,
 					CreationDate = DateTime.Now,
 					Status = 0, // DaDat
-					PaymentStatus = false,
+					PaymentStatus = 0,
 					DeleteStatus = false
 				};
 

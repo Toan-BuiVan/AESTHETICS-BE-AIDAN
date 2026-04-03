@@ -17,12 +17,11 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>FK → TreatmentSessions: buổi template nào (buổi 1, 2...)</summary>
 		public int? TreatmentSessionId { get; set; }
 		/// <summary>
-		/// ChuaThucHien: chưa đến lượt,
 		/// ChoDatLich: Chờ đặt lịch khám,
 		/// DaDatLich: đã đặt lịch hẹn,
 		/// DangThucHien: đang thực hiện,
 		/// HoanThanh: buổi này đã xong,
-		/// BoLo: khách không đến (no-show)
+		/// KhachHuy: kahchs hủy đặt lịch (no-show)
 		/// </summary>
 		/// 
 

@@ -15,6 +15,19 @@ namespace Aesthetics.Data.AestheticsInterfaces
 
 		Task<bool> delete(DeleteAppointment appointment);
 
-		Task<BaseDataCollection<AppointmentEntity>> getlist(AppointmentGet appointment);
+		Task<BaseDataCollection<AppointmentResponseModel>> getlist(AppointmentGet appointment);
+
+		/// <summary>Lấy thời gian trống của bác sĩ (kiểm tra AppointmentTimeLocks)</summary>
+		Task<DoctorAvailabilityResponseModel?> GetDoctorAvailability(GetDoctorAvailabilityRequest request);
+
+		/// <summary>
+		/// Hủy đặt lịch và cập nhật trạng thái CustomerTreatmentSession
+		/// Khi hủy lịch:
+		/// - Xóa appointment liên quan
+		/// - Cập nhật status của CustomerTreatmentSession = 4 (Cancelled)
+		/// </summary>
+		/// <param name="customerTreatmentSessionId">ID của CustomerTreatmentSession cần hủy</param>
+		/// <returns>True nếu hủy thành công, False nếu lỗi</returns>
+		Task<bool> UpdateAppointmentStatusAsync(updateappoint request);
 	}
 }

@@ -117,15 +117,14 @@ namespace Aesthetics.Data.AestheticsServices
 			{
 				// ✅ Build predicate: not deleted and unused vouchers only
 				Expression<Func<WalletEntity, bool>> predicate = x =>
-					x.DeleteStatus != true && x.IsUsed == false;
+					x.DeleteStatus != true;
 
 				if (searchWallet.CustomerId > 0)
 				{
 					// When filtering by CustomerId
 					predicate = x =>
 						x.CustomerId == searchWallet.CustomerId &&
-						x.DeleteStatus != true &&
-						x.IsUsed == false;
+						x.DeleteStatus != true;
 				}
 
 				// ✅ Lấy wallet với include Voucher
@@ -222,7 +221,7 @@ namespace Aesthetics.Data.AestheticsServices
 				}
 
 				// ✅ Kiểm tra voucher còn hiệu lực
-				if (!voucher.IsActive)
+				if (voucher.IsActive != true)
 				{
 					_logger.LogWarning("ExchangeVoucher failed: Voucher {VoucherId} is not active", request.VoucherId);
 					return false;
@@ -260,13 +259,13 @@ namespace Aesthetics.Data.AestheticsServices
 
 				if (request.PointType == 0) // AccumulatedPoints (điểm giới thiệu)
 				{
-					requiredPoints = voucher.AccumulatedPoints;
+					requiredPoints = voucher.AccumulatedPoints ?? 0;
 					currentPoints = customer.AccumulatedPoints;
 					pointTypeName = "Accumulated Points";
 				}
 				else if (request.PointType == 1) // RatingPoints (điểm mua hàng)
 				{
-					requiredPoints = voucher.RatingPoints;
+					requiredPoints = voucher.RatingPoints ?? 0;
 					currentPoints = customer.RatingPoints;
 					pointTypeName = "Rating Points";
 				}

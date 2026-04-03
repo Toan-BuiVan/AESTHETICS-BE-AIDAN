@@ -1,71 +1,64 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations.Schema;
 using System.ComponentModel.DataAnnotations;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace Aesthetics.Entities.Entities
 {
 	[Table("InvoiceDetails")]
 	public class InvoiceDetailEntity : Aesthetics.Entities.BaseEntity.BaseEntity
 	{
-		/// <summary>FK → Invoices: thuộc hóa đơn nào</summary>
+		[ForeignKey("Invoice")]
 		public int? InvoiceId { get; set; }
 
-		/// <summary>FK → Products: sản phẩm (null nếu là dịch vụ)</summary>
+		[ForeignKey("Product")]
 		public int? ProductId { get; set; }
 
-		/// <summary>FK → Services: dịch vụ (null nếu là sản phẩm)</summary>
+		[ForeignKey("Service")]
 		public int? ServiceId { get; set; }
 
-		/// <summary>FK → TreatmentPlans: gói liệu trình (null nếu đơn lẻ)</summary>
+		[ForeignKey("TreatmentPlan")]
 		public int? TreatmentPlanId { get; set; }
 
-		/// <summary>FK → Vouchers: voucher riêng cho dòng này (nếu có)</summary>
+		[ForeignKey("TreatmentSession")]
+		public int? TreatmentSessionId { get; set; }
+
+		//[ForeignKey("Voucher")]
 		public int? VoucherId { get; set; }
 
-		/// <summary>Phần trăm giảm cho dòng này</summary>
-		[Column(TypeName = "decimal(5,2)")]
-		public decimal DiscountValue { get; set; }
-
-		/// <summary>Đơn giá tại thời điểm mua</summary>
-		[Column(TypeName = "decimal(18,2)")]
+		/// <summary>Giá đơn vị của sản phẩm/dịch vụ/gói</summary>
+		[Column(TypeName = "decimal(18, 2)")]
 		public decimal? Price { get; set; }
 
 		/// <summary>Số lượng</summary>
-		public int Quantity { get; set; } = 1;
+		public int? Quantity { get; set; } = 1;
 
-		/// <summary>= Price * Quantity * (1 - DiscountValue/100)</summary>
-		[Column(TypeName = "decimal(18,2)")]
+		/// <summary>Tổng giá tiền gốc (Price × Quantity) - chưa áp dụng voucher</summary>
+		[Column(TypeName = "decimal(18, 2)")]
 		public decimal? TotalMoney { get; set; }
 
-		/// <summary>Trạng thái dòng: DaXuLy, DangCho</summary>
-		[MaxLength(50)]
+		/// <summary>Số tiền được giảm từ voucher</summary>
+		[Column(TypeName = "decimal(18, 2)")]
+		public decimal? DiscountValue { get; set; }
+
+		/// <summary>Tổng giá tiền sau khi áp dụng voucher (TotalMoney - DiscountValue)</summary>
+		[Column(TypeName = "decimal(18, 2)")]
+		public decimal? FinalPrice { get; set; }
+
+		/// <summary>Trạng thái thanh toán: ChuaThanhToan, ThanhToanMotPhan, DaThanhToan</summary>
 		public string? Status { get; set; }
 
-		/// <summary>'Nhap' = nhập hàng, 'Ban' = bán hàng</summary>
-		[MaxLength(50)]
+		/// <summary>Loại: Ban, etc</summary>
 		public string? Type { get; set; }
 
-		/// <summary>false = Chưa đánh giá, true = Đã đánh giá</summary>
-		public bool StatusComment { get; set; }
+		/// <summary>Ghi chú trạng thái</summary>
+		public bool? StatusComment { get; set; }
 
 		// Navigation properties
-		[ForeignKey(nameof(InvoiceId))]
 		public virtual InvoiceEntity? Invoice { get; set; }
-
-		[ForeignKey(nameof(ProductId))]
 		public virtual ProductEntity? Product { get; set; }
-
-		[ForeignKey(nameof(ServiceId))]
 		public virtual ServiceEntity? Service { get; set; }
-
-		[ForeignKey(nameof(TreatmentPlanId))]
+		public virtual TreatmentSessionEntity? TreatmentSession { get; set; }
 		public virtual TreatmentPlanEntity? TreatmentPlan { get; set; }
-
-		[ForeignKey(nameof(VoucherId))]
-		public virtual VoucherEntity? Voucher { get; set; }
+		//public virtual VoucherEntity? Voucher { get; set; }
 	}
 }

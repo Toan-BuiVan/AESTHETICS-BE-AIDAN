@@ -1,12 +1,14 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
 
 namespace Aesthetics.Entities.Entities
 {
-    public class AppointmentTimeLockEntity : Aesthetics.Entities.BaseEntity.BaseEntity
+	[Table("AppointmentTimeLocks")]
+	public class AppointmentTimeLockEntity : Aesthetics.Entities.BaseEntity.BaseEntity
 	{
 		public int? ClinicId { get; set; }
 

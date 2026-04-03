@@ -43,6 +43,106 @@ namespace Aesthetics.Controllers.AI
 		}
 
 		/// <summary>
+		/// ✅ API 1: Gọi LLM trực tiếp để phân tích query
+		/// Dùng khi muốn tách riêng bước gọi LLM từ bước thực thi tool
+		/// </summary>
+		[HttpPost("call-llm")]
+		public async Task<IActionResult> CallLLM([FromBody] CallLLMRequest request)
+		{
+			try
+			{
+				if (request == null || string.IsNullOrEmpty(request.UserMessage))
+				{
+					return BadRequest(new { success = false, message = "UserMessage is required" });
+				}
+
+				// ✅ Lấy danh sách tools
+				var toolsList = await _aiFunctionCallingService.GetAvailableToolsAsync();
+
+				// ✅ Xây dựng system prompt
+				var systemPrompt = BuildSystemPrompt(toolsList);
+
+				// ✅ Chuyển đổi conversation history
+				List<LLMMessage> llmConversationHistory = null;
+				if (request.ConversationHistory?.Any() == true)
+				{
+					llmConversationHistory = request.ConversationHistory
+						.Select(m => new LLMMessage
+						{
+							Role = m.Role,
+							Content = m.Content
+						})
+						.ToList();
+				}
+
+				// ✅ Gọi LLM
+				var llmResponse = await _llmService.CallLLMAsync(
+					systemPrompt,
+					request.UserMessage,
+					llmConversationHistory);
+
+				return Ok(new
+				{
+					success = true,
+					userMessage = request.UserMessage,
+					llmResponse = llmResponse,
+					message = "LLM response received successfully"
+				});
+			}
+			catch (Exception ex)
+			{
+				return StatusCode(500, new
+				{
+					success = false,
+					message = "Error calling LLM",
+					error = ex.Message
+				});
+			}
+		}
+
+		/// <summary>
+		/// ✅ API 2: Parse LLM response thành JSON structured
+		/// Dùng khi frontend muốn parse response từ LLM
+		/// </summary>
+		[HttpPost("parse-llm-response")]
+		public IActionResult ParseLLMResponse([FromBody] ParseLLMResponseRequest request)
+		{
+			try
+			{
+				if (request == null || string.IsNullOrEmpty(request.LLMResponse))
+				{
+					return BadRequest(new { success = false, message = "LLMResponse is required" });
+				}
+
+				// ✅ Parse LLM response
+				var functionCall = _llmService.ParseLLMResponse(request.LLMResponse);
+
+				return Ok(new
+				{
+					success = true,
+					originalResponse = request.LLMResponse,
+					parsedResponse = new
+					{
+						tool = functionCall.Tool,
+						parameters = functionCall.Params,
+						reasoning = functionCall.Reasoning
+					},
+					message = "LLM response parsed successfully"
+				});
+			}
+			catch (Exception ex)
+			{
+				return BadRequest(new
+				{
+					success = false,
+					message = "Failed to parse LLM response",
+					error = ex.Message,
+					originalResponse = request.LLMResponse
+				});
+			}
+		}
+
+		/// <summary>
 		/// Endpoint tích hợp hoàn chỉnh: Nhận query từ người dùng → Gọi LLM → Thực thi tool → Trả kết quả
 		/// </summary>
 		/// <param name="request">Query từ người dùng</param>
@@ -129,7 +229,7 @@ namespace Aesthetics.Controllers.AI
 					success = true,
 					userQuery = request.UserQuery,
 					tool = functionCall.Tool,
-					toolParams = functionCall.Params,
+					toolParameters = functionCall.Params,
 					reasoning = functionCall.Reasoning,
 					toolResult = new
 					{
@@ -186,18 +286,39 @@ namespace Aesthetics.Controllers.AI
 
 			return $@"{toolsList.SystemPrompt}
 
-				DANH SÁCH CÁC TOOL CÓ SẴN:
-				{toolsJson}
+DANH SÁCH CÁC TOOL CÓ SẴN:
+{toolsJson}
 
-				FORMAT RESPONSE:
-				{toolsList.ResponseFormat}
+FORMAT RESPONSE:
+{toolsList.ResponseFormat}
 
-				HƯỚNG DẪN:
-				- Phân tích kỹ yêu cầu của người dùng
-				- Chọn tool phù hợp nhất
-				- Điền đầy đủ tất cả tham số bắt buộc
-				- Trả về JSON hợp lệ
-				- Nếu không chắc, hãy chọn tool có liên quan nhất hoặc hỏi làm rõ";
+HƯỚNG DẪN:
+- Phân tích kỹ yêu cầu của người dùng
+- Chọn tool phù hợp nhất
+- Điền đầy đủ tất cả tham số bắt buộc
+- Trả về JSON hợp lệ
+- Nếu không chắc, hãy chọn tool có liên quan nhất hoặc hỏi làm rõ";
 		}
+	}
+
+	/// <summary>
+	/// ✅ Request model cho API CallLLM
+	/// </summary>
+	public class CallLLMRequest
+	{
+		/// <summary>Yêu cầu từ người dùng</summary>
+		public string UserMessage { get; set; }
+
+		/// <summary>Lịch sử cuộc hội thoại (optional)</summary>
+		public List<AIConversationMessage> ConversationHistory { get; set; }
+	}
+
+	/// <summary>
+	/// ✅ Request model cho API ParseLLMResponse
+	/// </summary>
+	public class ParseLLMResponseRequest
+	{
+		/// <summary>Response text từ LLM (có thể chứa JSON hoặc text tự nhiên)</summary>
+		public string LLMResponse { get; set; }
 	}
 }

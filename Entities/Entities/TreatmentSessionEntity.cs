@@ -33,5 +33,10 @@ namespace Aesthetics.Entities.Entities
 
 		public virtual ICollection<SessionProductEntity> SessionProducts { get; set; } = [];
 		public virtual ICollection<CustomerTreatmentSessionEntity> CustomerTreatmentSessions { get; set; } = [];
+
+		// ✅ BỔSUNG: Invoices và InvoiceDetails relationship
+		public virtual ICollection<InvoiceEntity> Invoices { get; set; } = [];
+		public virtual ICollection<InvoiceDetailEntity> InvoiceDetails { get; set; } = [];
+
 	}
 }

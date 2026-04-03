@@ -55,7 +55,7 @@ namespace Aesthetics.Entities.Entities
 		public virtual ICollection<SessionProductEntity> SessionProducts { get; set; } = [];
 		public virtual ICollection<CommentEntity> Comments { get; set; } = [];
 		public virtual ICollection<CartProductEntity> CartProductEntitys { get; set; } = [];
-		public virtual ICollection<InvoiceEntity> Invoices { get; set; } = [];
+		//public virtual ICollection<InvoiceEntity> Invoices { get; set; } = [];
 		public virtual ICollection<InvoiceDetailEntity> InvoiceDetails { get; set; } = [];
 	}
 }

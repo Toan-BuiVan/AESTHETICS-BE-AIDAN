@@ -27,5 +27,6 @@ namespace Aesthetics.Entities.Models.RequestModel
 	public class GetCustomerTreatment: BaseSearchModel
 	{
 		public int? CustomerId { get; set; }
+		public string? Status { get; set; }
 	}
 }

@@ -41,20 +41,20 @@ namespace Aesthetics.Entities.Entities
 		public string? RankMember { get; set; }
 
 		/// <summary>Số điểm mua hàng cần để đổi voucher</summary>
-		public int RatingPoints { get; set; }
+		public int? RatingPoints { get; set; }
 
 		/// <summary>Số điểm giới thiệu cần để đổi voucher</summary>
-		public int AccumulatedPoints { get; set; }
+		public int? AccumulatedPoints { get; set; }
 
 		/// <summary>Số lần sử dụng tối đa (toàn hệ thống)</summary>
-		public int UsageLimit { get; set; } = 1;
+		public int? UsageLimit { get; set; } = 1;
 
 		/// <summary>true = Đang kích hoạt, false = Tạm tắt</summary>
-		public bool IsActive { get; set; } = true;
+		public bool? IsActive { get; set; } = true;
 
 		// Navigation properties
 		public virtual ICollection<WalletEntity> Wallets { get; set; } = [];
-		public virtual ICollection<InvoiceEntity> Invoices { get; set; } = [];
-		public virtual ICollection<InvoiceDetailEntity> InvoiceDetails { get; set; } = [];
+		//public virtual ICollection<InvoiceEntity> Invoices { get; set; } = [];
+		//public virtual ICollection<InvoiceDetailEntity> InvoiceDetails { get; set; } = [];
 	}
 }

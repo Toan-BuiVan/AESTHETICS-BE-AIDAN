@@ -32,7 +32,7 @@ namespace Aesthetics.Entities.Entities
 		public DateTime? AssignedDate { get; set; }
 
 		/// <summary>false = Chưa thực hiện, true = Đã hoàn thành</summary>
-		public bool Status { get; set; }
+		public int Status { get; set; }
 
 		/// <summary>Số lượng dịch vụ</summary>
 		public int QuantityServices { get; set; } = 1;
@@ -41,8 +41,8 @@ namespace Aesthetics.Entities.Entities
 		[Column(TypeName = "decimal(18,2)")]
 		public decimal? Price { get; set; }
 
-		/// <summary>false = Chưa thanh toán, true = Đã thanh toán</summary>
-		public bool PaymentStatus { get; set; }
+		/// <summary>0 = Chưa thanh toán, 1 = Đã thanh toán toàn bộ, 2 = thanh toán 1 phần </summary>
+		public int? PaymentStatus { get; set; }
 
 		/// <summary>FK → Equipments: thiết bị sử dụng (tránh trùng)</summary>
 		public int? EquipmentId { get; set; }

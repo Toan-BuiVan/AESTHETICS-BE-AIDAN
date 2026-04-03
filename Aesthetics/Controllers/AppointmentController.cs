@@ -25,6 +25,13 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[HttpPost("updateappointmentstatus")]
+		public async Task<IActionResult> updateappointmentstatusasync([FromBody] updateappoint appointment)
+		{
+			var result = await _appointmentService.UpdateAppointmentStatusAsync(appointment);
+			return Ok(new { success = result });
+		}
+
 		[HttpPost("deleteappointment")]
 		public async Task<IActionResult> Delete([FromBody] DeleteAppointment appointment)
 		{
@@ -36,6 +43,13 @@ namespace Aesthetics.Controllers
 		public async Task<IActionResult> GetList([FromBody] AppointmentGet appointment)
 		{
 			var result = await _appointmentService.getlist(appointment);
+			return Ok(result);
+		}
+
+		[HttpPost("getdoctoravailability")]
+		public async Task<IActionResult> getdoctoravailability([FromBody] GetDoctorAvailabilityRequest appointment)
+		{
+			var result = await _appointmentService.GetDoctorAvailability(appointment);
 			return Ok(result);
 		}
 	}

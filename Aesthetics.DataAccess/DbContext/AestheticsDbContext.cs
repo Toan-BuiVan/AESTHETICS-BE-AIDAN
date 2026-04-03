@@ -38,6 +38,7 @@ namespace Aesthetics.Data.AestheticsDbContext
 			ConfigureSessionProductRelationships(builder);
 			ConfigureCustomerTreatmentPlanRelationships(builder);
 			ConfigureCustomerTreatmentSessionRelationships(builder);
+			ConfigureAppointmentTimeLockRelationships(builder);
 		}
 
 		private static void ConfigureUniqueIndexes(ModelBuilder builder)
@@ -125,11 +126,8 @@ namespace Aesthetics.Data.AestheticsDbContext
 				.HasForeignKey(w => w.CustomerId)
 				.OnDelete(DeleteBehavior.Cascade);
 
-			builder.Entity<InvoiceEntity>()
-				.HasOne(i => i.Customer)
-				.WithMany(c => c.Invoices)
-				.HasForeignKey(i => i.CustomerId)
-				.OnDelete(DeleteBehavior.SetNull);
+			// ❌ XÓA: Không config InvoiceEntity ở đây
+			// Nó sẽ được config ở ConfigureInvoiceRelationships
 
 			builder.Entity<CustomerTreatmentPlanEntity>()
 				.HasOne(ctp => ctp.Customer)
@@ -267,10 +265,11 @@ namespace Aesthetics.Data.AestheticsDbContext
 
 		private static void ConfigureInvoiceRelationships(ModelBuilder builder)
 		{
+			// ✅ Config Invoice + Customer ở đây (tập trung)
 			builder.Entity<InvoiceEntity>()
-				.HasOne(i => i.Voucher)
-				.WithMany(v => v.Invoices)
-				.HasForeignKey(i => i.VoucherId)
+				.HasOne(i => i.Customer)
+				.WithMany(c => c.Invoices)
+				.HasForeignKey(i => i.CustomerId)
 				.OnDelete(DeleteBehavior.SetNull);
 
 			builder.Entity<InvoiceEntity>()
@@ -291,22 +290,44 @@ namespace Aesthetics.Data.AestheticsDbContext
 				.HasForeignKey(i => i.TreatmentPlanId)
 				.OnDelete(DeleteBehavior.SetNull);
 
+			// ✅ BỔSUNG: Relationship cho TreatmentSession
+			builder.Entity<InvoiceEntity>()
+				.HasOne(i => i.TreatmentSession)
+				.WithMany(ts => ts.Invoices)
+				.HasForeignKey(i => i.TreatmentSessionId)
+				.OnDelete(DeleteBehavior.SetNull);
+
+			// ❌ XÓA: Relationship với Voucher đã loại bỏ
+			// builder.Entity<InvoiceEntity>()
+			//     .HasOne(i => i.Voucher)
+			//     .WithMany(v => v.Invoices)
+			//     .HasForeignKey(i => i.VoucherId)
+			//     .OnDelete(DeleteBehavior.SetNull);
+
 			builder.Entity<InvoiceDetailEntity>()
 				.HasOne(id => id.Invoice)
 				.WithMany(i => i.InvoiceDetails)
 				.HasForeignKey(id => id.InvoiceId)
 				.OnDelete(DeleteBehavior.Cascade);
 
-			builder.Entity<InvoiceDetailEntity>()
-				.HasOne(id => id.Voucher)
-				.WithMany(v => v.InvoiceDetails)
-				.HasForeignKey(id => id.VoucherId)
-				.OnDelete(DeleteBehavior.SetNull);
+			// ❌ XÓA: Relationship với Voucher đã loại bỏ
+			// builder.Entity<InvoiceDetailEntity>()
+			//     .HasOne(id => id.Voucher)
+			//     .WithMany(v => v.InvoiceDetails)
+			//     .HasForeignKey(id => id.VoucherId)
+			//     .OnDelete(DeleteBehavior.SetNull);
 
 			builder.Entity<InvoiceDetailEntity>()
 				.HasOne(id => id.TreatmentPlan)
 				.WithMany(tp => tp.InvoiceDetails)
 				.HasForeignKey(id => id.TreatmentPlanId)
+				.OnDelete(DeleteBehavior.SetNull);
+
+			// ✅ BỔSUNG: Relationship cho TreatmentSession trong InvoiceDetail
+			builder.Entity<InvoiceDetailEntity>()
+				.HasOne(id => id.TreatmentSession)
+				.WithMany(ts => ts.InvoiceDetails)
+				.HasForeignKey(id => id.TreatmentSessionId)
 				.OnDelete(DeleteBehavior.SetNull);
 
 			builder.Entity<PerformanceLogEntity>()
@@ -432,6 +453,15 @@ namespace Aesthetics.Data.AestheticsDbContext
 				.OnDelete(DeleteBehavior.Cascade);
 		}
 
+		private static void ConfigureAppointmentTimeLockRelationships(ModelBuilder builder)
+		{
+			builder.Entity<AppointmentTimeLockEntity>()
+				.HasOne(atl => atl.Clinic)
+				.WithMany(c => c.AppointmentTimeLocks)
+				.HasForeignKey(atl => atl.ClinicId)
+				.OnDelete(DeleteBehavior.Cascade);
+		}
+
 		// ==================== DbSets ====================
 		public DbSet<AccountEntity> Accounts { get; set; }
 		public DbSet<CustomerEntity> Customers { get; set; }
@@ -445,6 +475,7 @@ namespace Aesthetics.Data.AestheticsDbContext
 		public DbSet<CommentEntity> Comments { get; set; }
 		public DbSet<VoucherEntity> Vouchers { get; set; }
 		public DbSet<AppointmentEntity> Appointments { get; set; }
+		public DbSet<AppointmentTimeLockEntity> AppointmentTimeLocks { get; set; }  // ✅ THÊM DÒNG NÀY
 		public DbSet<CartEntity> Carts { get; set; }
 		public DbSet<CartProductEntity> CartProducts { get; set; }
 		public DbSet<WalletEntity> Wallets { get; set; }

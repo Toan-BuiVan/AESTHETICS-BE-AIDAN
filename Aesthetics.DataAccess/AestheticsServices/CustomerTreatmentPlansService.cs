@@ -571,20 +571,32 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
+
 		public async Task<BaseDataCollection<CustomerTreatmentPlanResponseModel>> getlist(GetCustomerTreatment treatment)
 		{
 			try
 			{
 				Expression<Func<CustomerTreatmentPlanEntity, bool>> predicate = x => !x.DeleteStatus;
 
+				// ✅ Lọc theo CustomerId (nếu có)
 				if (treatment.CustomerId.HasValue)
 				{
 					predicate = predicate.And(x => x.CustomerId == treatment.CustomerId.Value);
+					_logger.LogInformation("GETLIST_FILTER_CUSTOMER: CustomerId {CustomerId}", treatment.CustomerId.Value);
+				}
+
+				// ✅ Lọc theo Status (nếu có)
+				if (!string.IsNullOrWhiteSpace(treatment.Status))
+				{
+					predicate = predicate.And(x => x.Status == treatment.Status);
+					_logger.LogInformation("GETLIST_FILTER_STATUS: Status {Status}", treatment.Status);
 				}
 
 				var allMatching = await _customerTreatmentPlansRepository.FindByPredicate(predicate);
 				var allMatchingList = allMatching.ToList();
 				var totalCount = allMatchingList.Count;
+
+				_logger.LogInformation("GETLIST_MATCHING: Found {Count} records after filtering", totalCount);
 
 				// ✅ Batch load TreatmentPlans
 				var treatmentPlanIds = allMatchingList
@@ -601,6 +613,7 @@ namespace Aesthetics.Data.AestheticsServices
 						.ToList();
 
 					treatmentPlansMap = treatmentPlans.ToDictionary(p => p.Id);
+					_logger.LogInformation("GETLIST_TREATMENT_PLANS: Loaded {Count} treatment plans", treatmentPlansMap.Count);
 				}
 
 				// ✅ Batch load Services từ TreatmentPlans
@@ -618,6 +631,7 @@ namespace Aesthetics.Data.AestheticsServices
 						.ToList();
 
 					servicesMap = services.ToDictionary(s => s.Id);
+					_logger.LogInformation("GETLIST_SERVICES: Loaded {Count} services", servicesMap.Count);
 				}
 
 				// ✅ Batch load TreatmentSessions từ TreatmentPlans (không phải từ CustomerTreatmentSessions)
@@ -632,6 +646,7 @@ namespace Aesthetics.Data.AestheticsServices
 						.ToList();
 
 					allTreatmentSessions = treatmentSessions.ToDictionary(ts => ts.Id);
+					_logger.LogInformation("GETLIST_TREATMENT_SESSIONS: Loaded {Count} treatment sessions", allTreatmentSessions.Count);
 
 					// ✅ Batch load SessionProducts
 					var treatmentSessionIdList = allTreatmentSessions.Keys.ToList();
@@ -657,6 +672,7 @@ namespace Aesthetics.Data.AestheticsServices
 								.ToList();
 
 							productsMap = products.ToDictionary(p => p.Id);
+							_logger.LogInformation("GETLIST_PRODUCTS: Loaded {Count} products", productsMap.Count);
 						}
 
 						// ✅ Assign Products to SessionProducts
@@ -681,11 +697,9 @@ namespace Aesthetics.Data.AestheticsServices
 								session.SessionProducts = products;
 							}
 						}
-					}
 
-					_logger.LogInformation(
-						"GetList: Loaded TreatmentSessions - Total: {Total}",
-						allTreatmentSessions.Count);
+						_logger.LogInformation("GETLIST_SESSION_PRODUCTS: Loaded {Count} session products", sessionProductsList.Count);
+					}
 				}
 
 				// ✅ Batch load CustomerTreatmentSessions từ các CustomerTreatmentPlan (chỉ những chưa bị delete)
@@ -709,9 +723,7 @@ namespace Aesthetics.Data.AestheticsServices
 							g => g.ToDictionary(cs => cs.TreatmentSessionId ?? 0)
 						);
 
-					_logger.LogInformation(
-						"GetList: Loaded CustomerTreatmentSessions - Total: {Total}",
-						customerSessions.Count);
+					_logger.LogInformation("GETLIST_CUSTOMER_SESSIONS: Loaded {Count} customer treatment sessions", customerSessions.Count);
 				}
 
 				// ✅ Phân trang trước khi mapping
@@ -721,13 +733,15 @@ namespace Aesthetics.Data.AestheticsServices
 					.Take(treatment.PageSize)
 					.ToList();
 
+				_logger.LogInformation("GETLIST_PAGINATION: PageNo {PageNo}, PageSize {PageSize}, Returned {Count}",
+					treatment.PageNo, treatment.PageSize, pagedData.Count);
+
 				// ✅ Map sang CustomerTreatmentPlanResponseModel
 				var responseData = pagedData.Select(plan =>
 					MapToResponseModel(plan, treatmentPlansMap, servicesMap, allTreatmentSessions, customerSessionsMap))
 					.ToList();
 
-				_logger.LogInformation(
-					"GetList CustomerTreatmentPlan success: Total {Total}, Returned {Returned}",
+				_logger.LogInformation("GETLIST_SUCCESS: Total {Total}, Returned {Returned}",
 					totalCount, responseData.Count);
 
 				return new BaseDataCollection<CustomerTreatmentPlanResponseModel>(
@@ -739,7 +753,7 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "GetList CustomerTreatmentPlan exception");
+				_logger.LogError(ex, "GETLIST_EXCEPTION: Get customer treatment plan list failed");
 				return new BaseDataCollection<CustomerTreatmentPlanResponseModel>(
 					null,
 					0,

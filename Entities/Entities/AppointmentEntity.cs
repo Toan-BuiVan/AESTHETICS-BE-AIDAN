@@ -34,8 +34,8 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>Trạng thái: DaDat, DangThucHien, HoanThanh, Huy, DoiLich</summary>
 		public int? Status { get; set; }
 
-		/// <summary>false = Chưa thanh toán, true = Đã thanh toán</summary>
-		public bool PaymentStatus { get; set; }
+		/// <summary>0 = Chưa thanh toán, 1 = Đã thanh toán toàn bộ, 2 = thanh toán 1 phần </summary>
+		public int? PaymentStatus { get; set; }
 
 		/// <summary>Đã gửi email xác nhận đặt lịch hay chưa</summary>
 		public bool IsConfirmationEmailSent { get; set; } = false;

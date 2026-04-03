@@ -25,10 +25,24 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[HttpPost("updatepaymentstatus")]
+		public async Task<IActionResult> updatepaymentstatus([FromBody] UpdateInvoicePaymentStatus request)
+		{
+			var result = await _invoiceService.UpdatePaymentStatus(request);
+			return Ok(new { success = result });
+		}
+
+		[HttpPost("updateinvoiceorderstatus")]
+		public async Task<IActionResult> updateinvoiceorderstatus([FromBody] updateinvoiceorderstatus request)
+		{
+			var result = await _invoiceService.UpdateInvoiceOrderStatus(request);
+			return Ok(new { success = result });
+		}
+
 		[HttpPost("getinvoicelist")]
 		public async Task<IActionResult> GetList([FromBody] GetInvoice invoice)
 		{
-			var result = await _invoiceService.getlist(invoice);
+			var result = await _invoiceService.GetInvoiceDetails(invoice);
 			return Ok(result);
 		}
 	}
