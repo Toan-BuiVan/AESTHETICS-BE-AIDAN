@@ -137,28 +137,28 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				var response = new AIToolsListResponse
 				{
 					SystemPrompt = @"Bạn là trợ lý AI thông minh cho hệ thống đặt lịch spa và bán hàng. 
-Nhiệm vụ của bạn là:
-1. Phân tích yêu cầu của người dùng
-2. Quyết định sử dụng tool (API) nào phù hợp
-3. Trả về response theo format JSON được yêu cầu
+					Nhiệm vụ của bạn là:
+					1. Phân tích yêu cầu của người dùng
+					2. Quyết định sử dụng tool (API) nào phù hợp
+					3. Trả về response theo format JSON được yêu cầu
 
-Ghi chú:
-- Nếu người dùng muốn kiểm tra lịch trống = dùng getServiceAvailableSlots hoặc getDoctorAvailableSlots
-- Nếu người dùng muốn đặt lịch = dùng bookAppointment (nhưng trước đó phải kiểm tra lịch trống)
-- Nếu người dùng muốn xem sản phẩm = dùng getTopSellingProducts hoặc searchProducts
-- Nếu người dùng muốn tìm bác sĩ = dùng searchDoctors
-- Luôn trả về JSON hợp lệ",
+					Ghi chú:
+					- Nếu người dùng muốn kiểm tra lịch trống = dùng getServiceAvailableSlots hoặc getDoctorAvailableSlots
+					- Nếu người dùng muốn đặt lịch = dùng bookAppointment (nhưng trước đó phải kiểm tra lịch trống)
+					- Nếu người dùng muốn xem sản phẩm = dùng getTopSellingProducts hoặc searchProducts
+					- Nếu người dùng muốn tìm bác sĩ = dùng searchDoctors
+					- Luôn trả về JSON hợp lệ",
 
-					Tools = tools,
+										Tools = tools,
 
-					ResponseFormat = @"{
-  ""tool"": ""toolName"",
-  ""params"": {
-    ""param1"": ""value1"",
-    ""param2"": ""value2""
-  },
-  ""reasoning"": ""Giải thích tại sao chọn tool này (optional)""
-}"
+										ResponseFormat = @"{
+					  ""tool"": ""toolName"",
+					  ""params"": {
+						""param1"": ""value1"",
+						""param2"": ""value2""
+					  },
+					  ""reasoning"": ""Giải thích tại sao chọn tool này (optional)""
+					}"
 				};
 
 				_logger.LogInformation("Retrieved {Count} available tools", tools.Count);
@@ -414,20 +414,34 @@ Ghi chú:
 
 				_logger.LogInformation("Getting top {Limit} selling products", limit);
 
-				// ✅ Lấy tất cả sản phẩm
+				// ✅ Lấy tất cả sản phẩm (không bị xóa)
 				var allProducts = await _productRepository.FindByPredicate(x => !x.DeleteStatus);
+
+				if (!allProducts.Any())
+				{
+					_logger.LogInformation("No products found");
+					return new AIExecuteToolResponse
+					{
+						Success = true,
+						Data = new List<object>(),
+						Message = "No products found"
+					};
+				}
 
 				// ✅ Lấy thống kê bán hàng từ InvoiceDetail
 				var invoiceDetails = await _invoiceDetailsRepository
 					.FindByPredicate(x => !x.DeleteStatus);
 
 				// ✅ Group by ProductId để lấy tổng số lượng bán
+				// ⚠️ BỎ QUA null ProductIds
 				var productSalesMap = invoiceDetails
+					.Where(x => x.ProductId.HasValue)  // ← Filter out null ProductIds
 					.GroupBy(x => x.ProductId)
-					.ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity));
+					.ToDictionary(g => g.Key, g => g.Sum(x => x.Quantity ?? 0));
 
 				// ✅ Join và sắp xếp theo số lượng bán
 				var topProducts = allProducts
+					.Where(p => p.Id > 0)  // ← Chỉ lấy products có ID hợp lệ
 					.Select(p => new
 					{
 						productId = p.Id,
@@ -435,9 +449,10 @@ Ghi chú:
 						sellingPrice = p.SellingPrice ?? 0,
 						serviceType = p.ServiceType?.ServiceTypeName ?? "N/A",
 						soldCount = productSalesMap.ContainsKey(p.Id) ? productSalesMap[p.Id] : 0,
-						quantity = p.Quantity
+						quantity = p.Quantity 
 					})
 					.OrderByDescending(x => x.soldCount)
+					.ThenByDescending(x => x.quantity)  // ← Nếu bán hàng bằng nhau, sắp xếp theo tồn kho
 					.Take(limit)
 					.ToList();
 
@@ -452,7 +467,7 @@ Ghi chú:
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "Error getting top selling products");
+				_logger.LogError(ex, "Error getting top selling products: {ErrorMessage}", ex.Message);
 				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
 			}
 		}

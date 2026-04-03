@@ -50,10 +50,81 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					Content = systemPrompt
 				});
 
-				// Conversation history (nếu có)
+				// ✅ Conversation history (nếu có) - Clean up before adding
 				if (conversationHistory?.Any() == true)
 				{
-					messages.AddRange(conversationHistory);
+					var cleanedHistory = new List<LLMMessage>();
+					
+					foreach (var msg in conversationHistory)
+					{
+						// Bỏ qua messages rỗng hoặc không hợp lệ
+						if (string.IsNullOrWhiteSpace(msg?.Content))
+						{
+							continue;
+						}
+
+						// Chỉ lấy role user hoặc assistant
+						if (msg.Role != "user" && msg.Role != "assistant")
+						{
+							_logger.LogWarning("Invalid role in conversation history: {Role}", msg.Role);
+							continue;
+						}
+
+						// ✅ Nếu content là JSON (từ previous response), extract text thôi
+						var cleanContent = msg.Content.Trim();
+						
+						if (cleanContent.StartsWith("{") && cleanContent.EndsWith("}"))
+						{
+							try
+							{
+								var jsonObj = JsonSerializer.Deserialize<JsonElement>(cleanContent);
+								
+								// Nếu là response từ tool, lấy message hoặc summary
+								if (jsonObj.TryGetProperty("message", out var messageProp))
+								{
+									cleanContent = messageProp.GetString() ?? "Tool executed successfully";
+								}
+								else if (jsonObj.TryGetProperty("toolResult", out var toolResultProp) && 
+										 toolResultProp.TryGetProperty("message", out var resultMsg))
+								{
+									cleanContent = resultMsg.GetString() ?? "Tool executed";
+								}
+								else
+								{
+									cleanContent = "Previous query processed";
+								}
+							}
+							catch
+							{
+								// Nếu parse JSON thất bại, giữ nguyên content
+								_logger.LogDebug("Could not parse JSON from conversation history, keeping original content");
+							}
+						}
+						else
+						{
+							// Sanitize: trim + replace multiple newlines với single space
+							cleanContent = cleanContent
+								.Replace("\r\n", " ")
+								.Replace("\n", " ")
+								.Replace("  ", " ");
+
+							// Giới hạn độ dài mỗi message
+							if (cleanContent.Length > 500)
+							{
+								cleanContent = cleanContent.Substring(0, 500).Trim() + "...";
+							}
+						}
+
+						cleanedHistory.Add(new LLMMessage
+						{
+							Role = msg.Role,
+							Content = cleanContent
+						});
+					}
+
+					messages.AddRange(cleanedHistory);
+					
+					_logger.LogInformation("Added {HistoryCount} messages from conversation history", cleanedHistory.Count);
 				}
 
 				// User message
@@ -77,7 +148,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					PropertyNamingPolicy = JsonNamingPolicy.CamelCase
 				});
 
-				_logger.LogInformation("Sending request to OpenAI API with payload: {Payload}", jsonContent);
+				_logger.LogInformation("Sending request to OpenAI API with {MessageCount} messages", messages.Count);
 
 				var httpRequest = new HttpRequestMessage(HttpMethod.Post, _openAiBaseUrl)
 				{
@@ -100,7 +171,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 
 				// ✅ Parse response
 				var responseContent = await response.Content.ReadAsStringAsync();
-				_logger.LogInformation("OpenAI API response: {Response}", responseContent);
+				_logger.LogInformation("OpenAI API response received successfully");
 
 				var llmResponse = JsonSerializer.Deserialize<LLMResponse>(responseContent, new JsonSerializerOptions
 				{
@@ -114,9 +185,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 
 				var assistantMessage = llmResponse.Choices[0].Message.Content;
 
-				_logger.LogInformation("LLM response: {Response}", assistantMessage);
-				_logger.LogInformation("Token usage - Prompt: {PromptTokens}, Completion: {CompletionTokens}, Total: {TotalTokens}",
-					llmResponse.Usage.PromptTokens, llmResponse.Usage.CompletionTokens, llmResponse.Usage.TotalTokens);
+				_logger.LogInformation("LLM response received successfully");
 
 				return assistantMessage;
 			}
