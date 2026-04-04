@@ -30,6 +30,12 @@ namespace Aesthetics.Entities.Models.RequestModel.AI
 		public string Content { get; set; }
 	}
 
+	public class LLMToolResponse
+	{
+		public string Tool { get; set; }
+		public System.Collections.Generic.Dictionary<string, object> Params { get; set; }
+	}
+
 	/// <summary>
 	/// Response từ LLM (OpenAI)
 	/// </summary>

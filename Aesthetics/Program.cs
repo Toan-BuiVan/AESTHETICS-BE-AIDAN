@@ -93,7 +93,6 @@ builder.Services.AddScoped<IWalletService, WalletService>();
 builder.Services.AddScoped<IStaffService, StaffService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IAccountSessionsService, AccountSessionsService>();
-builder.Services.AddScoped<IAIFunctionCallingService, AIFunctionCallingService>();
 builder.Services.AddHttpClient<ILLMService, LLMService>()
 	.ConfigureHttpClient(client =>
 	{
@@ -102,6 +101,11 @@ builder.Services.AddHttpClient<ILLMService, LLMService>()
 	});
 // → DI container tự động inject HttpClient vào LLMService
 
+// ===== AI Services =====
+builder.Services.AddScoped<IAIAppointmentService, AIAppointmentService>();
+builder.Services.AddScoped<IAIAnalyticsService, AIAnalyticsService>();
+builder.Services.AddScoped<IAICartService, AICartService>();
+builder.Services.AddScoped<IAIFunctionCallingService, AIFunctionCallingService>();
 
 builder.Services.AddHostedService<Aesthetics.Data.AestheticsServices.EmailService.AppointmentReminderBackgroundService>();
 builder.Services.AddDistributedMemoryCache();
