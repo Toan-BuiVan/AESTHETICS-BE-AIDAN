@@ -17,8 +17,11 @@ namespace Aesthetics.Data.AestheticsInterfaces.AI
 		/// <summary>Bài 6: Lấy dịch vụ theo khoảng giá</summary>
 		Task<AIServicesByPriceResponse> GetServicesByPriceRangeAsync(decimal minPrice, decimal maxPrice, int? serviceTypeId = null);
 
-		/// <summary>Bài 13: Lấy top sản phẩm bán chạy nhất</summary>
-		Task<AITopProductsResponse> GetTopProductsAsync(int? serviceTypeId = null);
+		/// <summary>Bài 12: Tư vấn sản phẩm theo yêu cầu/từ khóa (da, mụn, lão hóa, v.v.)</summary>
+		Task<AIProductsByPriceResponse> GetRecommendedProductsByCategoryAsync(string keyword);
+
+		/// <summary>Bài 13: Lấy top sản phẩm bán chạy nhất (có thể giới hạn số lượng)</summary>
+		Task<AITopProductsResponse> GetTopProductsAsync(int? limit = null, int? serviceTypeId = null);
 
 		/// <summary>Bài 14: Lấy thông tin chi tiết sản phẩm</summary>
 		Task<AIProductDetailsResponse> GetProductDetailsAsync(int productId, int? diseaseId = null);

@@ -174,24 +174,39 @@ namespace Aesthetics.Data.AestheticsServices.AI
 
 					new AITool
 					{
-					 Name = "getServicesByPriceRange",
-					 Description = "Dịch vụ/liệu trình theo khoảng giá",
-					 InputSchema = new Dictionary<string, string>
-					 {
-						 { "minPrice", "decimal - Giá tối thiểu" },
-						 { "maxPrice", "decimal - Giá tối đa" }
-					 },
-					 OutputDescription = "{ services: [...] }",
-					 Example = "minPrice: 100000, maxPrice: 500000"
+						 Name = "getServicesByPriceRange",
+						 Description = "Dịch vụ/liệu trình theo khoảng giá",
+						 InputSchema = new Dictionary<string, string>
+						 {
+							 { "minPrice", "decimal - Giá tối thiểu" },
+							 { "maxPrice", "decimal - Giá tối đa" }
+						 },
+						 OutputDescription = "{ services: [...] }",
+						 Example = "minPrice: 100000, maxPrice: 500000"
+					},
+
+					new AITool
+					{
+						Name = "getRecommendedProductsByCategory",
+						Description = "⭐ Tư vấn sản phẩm theo yêu cầu/loại (da, mụn, lão hóa, v.v.) - tìm sản phẩm liên quan đến yêu cầu",
+						InputSchema = new Dictionary<string, string>
+						{
+							{ "keyword", "string - Từ khóa tìm kiếm (ví dụ: 'da', 'mụn', 'lão hóa', 'chăm sóc da', 'trị nám')" }
+						},
+						OutputDescription = "Danh sách sản phẩm liên quan: [{ productId, name, price, description }]",
+						Example = "keyword: 'chăm sóc da' hoặc 'mụn' hoặc 'da khô'"
 					},
 
 					new AITool
 					{
 						Name = "getTopSellingProducts",
-						Description = "Top sản phẩm bán chạy nhất",
-						InputSchema = new Dictionary<string, string>(),
+						Description = "Top sản phẩm bán chạy nhất (có thể giới hạn số lượng)",
+						InputSchema = new Dictionary<string, string>
+						{
+							{ "limit", "int (optional) - Số lượng sản phẩm muốn lấy (default: 10)" }
+						},
 						OutputDescription = "Danh sách sản phẩm: [{ productId, name, price, salesCount }]",
-						Example = ""
+						Example = "limit: 5 hoặc không truyền để lấy top 10"
 					},
 
 					new AITool
@@ -299,6 +314,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					"getMostPopularServices" => await ExecuteGetMostPopularServices(request.LLMResponse.Params),
 					"getBestDoctorForService" => await ExecuteGetBestDoctorForService(request.LLMResponse.Params),
 					"getServicesByPriceRange" => await ExecuteGetServicesByPriceRange(request.LLMResponse.Params),
+					"getRecommendedProductsByCategory" => await ExecuteGetRecommendedProductsByCategory(request.LLMResponse.Params),
 					"getTopSellingProducts" => await ExecuteGetTopSellingProducts(request.LLMResponse.Params),
 					"getProductDetail" => await ExecuteGetProductDetail(request.LLMResponse.Params),
 					"getProductsByPriceRange" => await ExecuteGetProductsByPriceRange(request.LLMResponse.Params),
@@ -339,6 +355,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					"getBestDoctorForService" => ValidateServiceParams(@params),
 					"getServicesByPriceRange" => ValidatePriceRangeParams(@params),
 					"getTopSellingProducts" => true,
+					"getRecommendedProductsByCategory" => ValidateKeywordParams(@params),
 					"getProductDetail" => ValidateProductParams(@params),
 					"getProductsByPriceRange" => ValidatePriceRangeParams(@params),
 					"addProductToCart" => ValidateAddToCartParams(@params),
@@ -606,7 +623,16 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		{
 			try
 			{
-				var result = await _aiAnalyticsService.GetTopProductsAsync();
+				int? limit = null;
+				if (@params.ContainsKey("limit") && @params["limit"] != null)
+				{
+					if (int.TryParse(@params["limit"].ToString(), out var limitValue))
+					{
+						limit = limitValue;
+					}
+				}
+
+				var result = await _aiAnalyticsService.GetTopProductsAsync(limit);
 				return new AIExecuteToolResponse
 				{
 					Success = result.Success,
@@ -905,8 +931,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				8. getServicesByPriceRange - Dịch vụ theo khoảng giá
 				   Params: {""minPrice"": decimal, ""maxPrice"": decimal}
 
-				9. getTopSellingProducts - Top sản phẩm bán chạy nhất
-				   Params: {}
+				9. getTopSellingProducts - ⭐ Top sản phẩm bán chạy nhất (CÓ THỂ GIỚI HẠN SỐ LƯỢNG)
+				   Params: {""limit"": ""int (optional) - Số lượng sản phẩm""}
 
 				10. getProductDetail - Chi tiết sản phẩm
 					Params: {""productId"": int}
@@ -919,6 +945,39 @@ namespace Aesthetics.Data.AestheticsServices.AI
 
 				13. removeProductFromCart - Xóa sản phẩm khỏi giỏ hàng
 					Params: {""productId"": int}
+
+				14. getRecommendedProductsByCategory - ⭐ Tư vấn sản phẩm theo yêu cầu/loại (da, mụn, lão hóa, v.v.)
+				   Params: {""keyword"": ""Từ khóa tìm kiếm (ví dụ: 'chăm sóc da', 'mụn', 'lão hóa')""}
+
+				⚡ CRITICAL DECISION RULES:
+
+				📌 Khi query hỏi ""danh sách bác sĩ"", ""tất cả bác sĩ"", ""các bác sĩ"":
+				   → PHẢI DÙNG: getDoctorsForService (trả về tất cả bác sĩ)
+				   → KHÔNG dùng: getBestDoctorForService
+				   Ví dụ:
+				   - 'Danh sách các bác sĩ của dịch vụ trẻ hóa da' → getDoctorsForService
+				   - 'Cho tôi đầy đủ danh sách các bác sĩ của trẻ hóa da' → getDoctorsForService
+
+				📌 Khi query hỏi ""bác sĩ tốt nhất"", ""bác sĩ giỏi nhất"", ""bác sĩ được chọn nhiều nhất"":
+				   → PHẢI DÙNG: getBestDoctorForService (chỉ 1 bác sĩ)
+				   Ví dụ:
+				   - 'Bác sĩ tốt nhất của dịch vụ trẻ hóa da' → getBestDoctorForService
+
+				📌 Khi query hỏi ""tư vấn sản phẩm"", ""sản phẩm về"", ""sản phẩm chăm sóc"":
+				   → PHẢI DÙNG: getRecommendedProductsByCategory
+				   → TRÍCH XUẤT từ khóa từ query
+				   Ví dụ:
+				   - 'Tư vấn cho tôi các sản phẩm về mụn' → {""keyword"": ""mụn""}
+
+				📌 ⭐⭐⭐ QUAN TRỌNG: Khi query hỏi ""Top N"", ""N sản phẩm bán chạy nhất"":
+				   → PHẢI DÙNG: getTopSellingProducts
+				   → PHẢI TRÍCH XUẤT số N và TRUYỀN vào {""limit"": N}
+				   → KHÔNG TRUYỀN limit = không giới hạn, mặc định 10
+				   Ví dụ:
+				   - 'Top 1 sản phẩm điều trị da' → {""limit"": 1}
+				   - 'Top 5 sản phẩm bán chạy nhất' → {""limit"": 5}
+				   - 'Top 3 sản phẩm' → {""limit"": 3}
+				   - 'Sản phẩm bán chạy nhất' (không có số) → {} (mặc định 3)
 
 				CRITICAL RULES:
 				✅ LUÔN trả về JSON với định dạng CHÍNH XÁC:
@@ -937,7 +996,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				- Ngày ""15/4"" → Đổi thành ""2026-04-15""
 
 				✅ RESPONSE EXAMPLE:
-				User: 'Cho tôi lịch trống của bác sĩ Toan ngày 08-04-2026'
+				📍 EXAMPLE 0 - User: 'Cho tôi lịch trống của bác sĩ Toan ngày 08-04-2026'
 				Response:
 				{
 				  ""tool"": ""getDoctorAvailableSlots"",
@@ -946,6 +1005,60 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					""date"": ""2026-04-08""
 				  },
 				  ""reasoning"": ""Người dùng muốn xem lịch trống của bác sĩ Toan vào ngày 08-04-2026""
+				}
+
+				📍 EXAMPLE 1 - Danh sách bác sĩ:
+				User: 'Cho tôi đầy đủ danh sách các bác sĩ của trẻ hóa da'
+				Response:
+				{
+				  ""tool"": ""getDoctorsForService"",
+				  ""params"": {
+					""serviceId"": ""trẻ hóa da""
+				  },
+				  ""reasoning"": ""Người dùng hỏi danh sách/tất cả các bác sĩ của dịch vụ""
+				}
+
+				📍 EXAMPLE 2 - Bác sĩ tốt nhất:
+				User: 'Bác sĩ tốt nhất của dịch vụ trẻ hóa da là ai?'
+				Response:
+				{
+				  ""tool"": ""getBestDoctorForService"",
+				  ""params"": {
+					""serviceId"": ""trẻ hóa da""
+				  },
+				  ""reasoning"": ""Người dùng hỏi bác sĩ tốt nhất → chỉ 1 bác sĩ""
+				}
+
+				📍 EXAMPLE 3 - Top 1 sản phẩm:
+				User: 'Top 1 sản phẩm điều trị da của của hàng'
+				Response:
+				{
+				  ""tool"": ""getTopSellingProducts"",
+				  ""params"": {
+					""limit"": 1
+				  },
+				  ""reasoning"": ""Người dùng hỏi Top 1 sản phẩm → trích xuất số 1 → limit = 1""
+				}
+
+				📍 EXAMPLE 4 - Top 5 sản phẩm:
+				User: 'Cho tôi top 5 sản phẩm bán chạy nhất'
+				Response:
+				{
+				  ""tool"": ""getTopSellingProducts"",
+				  ""params"": {
+					""limit"": 5
+				  },
+				  ""reasoning"": ""Người dùng hỏi top 5 → trích xuất số 5 → limit = 5""
+				}
+
+				📍 EXAMPLE 5 : 'Tư vấn cho tôi các sản phẩm về mụn'
+				Response:
+				{
+				  ""tool"": ""getRecommendedProductsByCategory"",
+				  ""params"": {
+					""keyword"": ""mụn""
+				  },
+				  ""reasoning"": ""Người dùng tìm sản phẩm về chăm sóc mụn → dùng getRecommendedProductsByCategory""
 				}
 
 				Current Date: " + DateTime.UtcNow.ToString("yyyy-MM-dd") + @"
@@ -1291,6 +1404,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				_logger.LogError(ex, "Error logging available treatment plans");
 			}
 		}
+		private bool ValidateKeywordParams(Dictionary<string, object> @params)
+			=> @params.ContainsKey("keyword") && !string.IsNullOrWhiteSpace(@params["keyword"].ToString());
 
 		private async Task<AIExecuteToolResponse> ExecuteGetDoctorsForTreatmentPlan(Dictionary<string, object> @params)
 		{
@@ -1309,6 +1424,32 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "Error in ExecuteGetDoctorsForTreatmentPlan");
+				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
+			}
+		}
+
+		private async Task<AIExecuteToolResponse> ExecuteGetRecommendedProductsByCategory(Dictionary<string, object> @params)
+		{
+			try
+			{
+				if (!@params.ContainsKey("keyword") || string.IsNullOrWhiteSpace(@params["keyword"].ToString()))
+				{
+					return new AIExecuteToolResponse { Success = false, Error = "Keyword không được để trống" };
+				}
+
+				var keyword = @params["keyword"].ToString();
+				var result = await _aiAnalyticsService.GetRecommendedProductsByCategoryAsync(keyword);
+				return new AIExecuteToolResponse
+				{
+					Success = result.Success,
+					Data = result,
+					Message = result.Message,
+					Error = result.Success ? null : result.Message
+				};
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error in ExecuteGetRecommendedProductsByCategory");
 				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
 			}
 		}

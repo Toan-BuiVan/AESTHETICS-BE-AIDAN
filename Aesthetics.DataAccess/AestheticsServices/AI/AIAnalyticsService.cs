@@ -282,11 +282,11 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		}
 
 		/// <summary>Bài 13: Lấy top sản phẩm bán chạy nhất</summary>
-		public async Task<AITopProductsResponse> GetTopProductsAsync(int? serviceTypeId = null)
+		public async Task<AITopProductsResponse> GetTopProductsAsync(int? limit = null, int? serviceTypeId = null)
 		{
 			try
 			{
-				_logger.LogInformation("GET_TOP_PRODUCTS: serviceTypeId={ServiceTypeId}", serviceTypeId);
+				_logger.LogInformation("GET_TOP_PRODUCTS: limit={Limit}, serviceTypeId={ServiceTypeId}", limit, serviceTypeId);
 
 				var response = new AITopProductsResponse { Products = new List<AITopProduct>() };
 
@@ -309,9 +309,11 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					productSales.Add((product.Id, product.ProductName, product.SellingPrice ?? 0, salesCount));
 				}
 
+				// Sắp xếp và giới hạn số lượng
+				var limitCount = limit ?? 3; 
 				var topProducts = productSales
 					.OrderByDescending(x => x.SalesCount)
-					.Take(10)
+					.Take(limitCount)
 					.Select(p => new AITopProduct
 					{
 						ProductId = p.ProductId,
@@ -422,6 +424,66 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "GET_PRODUCTS_BY_PRICE_ERROR: Exception occurred");
+				return new AIProductsByPriceResponse
+				{
+					Success = false,
+					Message = $"Lỗi: {ex.Message}",
+					Products = new List<AIProductPrice>()
+				};
+			}
+		}
+
+		/// <summary>Bài 12: Tư vấn sản phẩm theo yêu cầu/từ khóa (da, mụn, lão hóa, v.v.)</summary>
+		public async Task<AIProductsByPriceResponse> GetRecommendedProductsByCategoryAsync(string keyword)
+		{
+			try
+			{
+				_logger.LogInformation("GET_RECOMMENDED_PRODUCTS_BY_CATEGORY: keyword={Keyword}", keyword);
+
+				var response = new AIProductsByPriceResponse { Products = new List<AIProductPrice>() };
+
+				if (string.IsNullOrWhiteSpace(keyword))
+				{
+					response.Success = false;
+					response.Message = "Từ khóa không được để trống";
+					return response;
+				}
+
+				var products = await _productRepository.FindByPredicate(x => !x.DeleteStatus);
+
+				if (!products.Any())
+				{
+					response.Success = false;
+					response.Message = "Không tìm thấy sản phẩm nào";
+					return response;
+				}
+
+				// Tìm kiếm sản phẩm dựa vào tên, mô tả hoặc từ khóa
+				var recommendedProducts = products
+					.Where(p =>
+						(p.ProductName != null && p.ProductName.Contains(keyword, StringComparison.OrdinalIgnoreCase)) ||
+						(p.Description != null && p.Description.Contains(keyword, StringComparison.OrdinalIgnoreCase)))
+					.Select(p => new AIProductPrice
+					{
+						ProductId = p.Id,
+						ProductName = p.ProductName,
+						Price = p.SellingPrice ?? 0,
+						Description = p.Description,
+						Quantity = p.Quantity,
+						ServiceTypeId = p.ServiceTypeId ?? 0
+					})
+					.OrderBy(x => x.ProductName)
+					.ToList();
+
+				response.Products = recommendedProducts;
+				response.Success = true;
+				response.Message = $"Tìm thấy {recommendedProducts.Count} sản phẩm liên quan đến '{keyword}'";
+
+				return response;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "GET_RECOMMENDED_PRODUCTS_BY_CATEGORY_ERROR: Exception occurred");
 				return new AIProductsByPriceResponse
 				{
 					Success = false,

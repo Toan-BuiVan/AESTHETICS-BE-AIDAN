@@ -335,20 +335,16 @@ namespace Aesthetics.Data.AestheticsServices.AI
 							x.Status != (int)AppointmentStatus.Cancelled &&
 							!x.DeleteStatus)).Count();
 
-						// Chỉ thêm bác sĩ nếu có lịch hẹn cho dịch vụ này
-						if (appointmentCount > 0)
+						doctors.Add(new AIServiceDoctor
 						{
-							doctors.Add(new AIServiceDoctor
-							{
-								StaffId = staff.Id,
-								Name = staff.FullName,
-								Specialization = staff.Specialization,
-								Experience = staff.ExperienceYears ?? 0,
-								Degree = staff.Degree,
-								Rating = CalculateDoctorRating(appointmentCount),
-								AppointmentCount = appointmentCount
-							});
-						}
+							StaffId = staff.Id,
+							Name = staff.FullName,
+							Specialization = staff.Specialization,
+							Experience = staff.ExperienceYears ?? 0,
+							Degree = staff.Degree,
+							Rating = CalculateDoctorRating(appointmentCount),
+							AppointmentCount = appointmentCount
+						});
 					}
 				}
 
