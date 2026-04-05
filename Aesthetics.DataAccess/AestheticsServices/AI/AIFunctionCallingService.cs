@@ -150,6 +150,24 @@ namespace Aesthetics.Data.AestheticsServices.AI
 						Example = "treatmentPlanId: 12"
 					},
 
+					new AITool
+					{
+						Name = "bookAppointment",
+						Description = "Đặt lịch khám cho khách hàng (hỗ trợ đặt lịch cho buổi cụ thể trong liệu trình)",
+						InputSchema = new Dictionary<string, string>
+						{
+							{ "customerId", "int - ID khách hàng" },
+							{ "staffId", "int - ID bác sĩ" },
+							{ "serviceId", "int - ID dịch vụ" },
+							{ "appointmentDate", "string (YYYY-MM-DD) - Ngày hẹn" },
+							{ "appointmentTime", "string (HH:mm) - Giờ hẹn" },
+							{ "treatmentPlanId", "int (optional) - ID liệu trình" },
+							{ "sessionNumber", "int (optional) - Buổi thứ mấy trong liệu trình (ví dụ: 1, 2, 3...)" }
+						},
+						OutputDescription = "Thông tin lịch hẹn: { appointmentId, confirmationCode, status }",
+						Example = "customerId: 1, staffId: 1, serviceId: 1, appointmentDate: 2026-04-08, appointmentTime: 09:00, treatmentPlanId: 1, sessionNumber: 3"
+					},
+
 					// ===== ANALYTICS TOOLS =====
 					new AITool
 					{
@@ -492,15 +510,43 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				var staffId = Convert.ToInt32(@params["staffId"]);
 				var serviceId = Convert.ToInt32(@params["serviceId"]);
 				var appointmentDateStr = @params["appointmentDate"].ToString();
-				var appointmentTime = @params["appointmentTime"].ToString();
+				var appointmentTimeStr = @params["appointmentTime"].ToString();
 
+				// ✅ Parse date
 				if (!DateTime.TryParse(appointmentDateStr, out var appointmentDate))
 				{
 					return new AIExecuteToolResponse { Success = false, Error = "Invalid appointment date format" };
 				}
 
+				// ✅ Parse time - support multiple formats
+				var appointmentTime = NormalizeTime(appointmentTimeStr);
+				if (string.IsNullOrEmpty(appointmentTime))
+				{
+					return new AIExecuteToolResponse { Success = false, Error = "Invalid appointment time format. Use HH:mm (e.g., 08:30, 14:00)" };
+				}
+
+				_logger.LogInformation("🕐 Normalized time: {RawTime} → {NormalizedTime}", appointmentTimeStr, appointmentTime);
+
+				int? treatmentPlanId = null;
+				if (@params.ContainsKey("treatmentPlanId") && @params["treatmentPlanId"] != null)
+				{
+					if (int.TryParse(@params["treatmentPlanId"].ToString(), out var tpId))
+					{
+						treatmentPlanId = tpId;
+					}
+				}
+
+				int? sessionNumber = null;
+				if (@params.ContainsKey("sessionNumber") && @params["sessionNumber"] != null)
+				{
+					if (int.TryParse(@params["sessionNumber"].ToString(), out var sn))
+					{
+						sessionNumber = sn;
+					}
+				}
+
 				var result = await _aiAppointmentService.BookAppointmentAsync(
-					customerId, staffId, serviceId, appointmentDate, appointmentTime);
+					customerId, staffId, serviceId, appointmentDate, appointmentTime, treatmentPlanId, sessionNumber);
 
 				return new AIExecuteToolResponse
 				{
@@ -514,6 +560,81 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			{
 				_logger.LogError(ex, "Error in ExecuteBookAppointment");
 				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
+			}
+		}
+
+		/// <summary>
+		/// Chuẩn hóa định dạng giờ từ nhiều format khác nhau
+		/// Hỗ trợ: "08:30", "8:30", "0830", "14", "14h", "2h chiều", "8h30 sáng", v.v.
+		/// </summary>
+		private string NormalizeTime(string timeStr)
+		{
+			if (string.IsNullOrWhiteSpace(timeStr))
+				return null;
+
+			timeStr = timeStr.Trim().ToLower();
+			_logger.LogInformation("📝 Normalizing time: {RawTime}", timeStr);
+
+			try
+			{
+				// Case 1: Đã đúng format HH:mm
+				if (timeStr.Contains(":"))
+				{
+					if (DateTime.TryParse($"2000-01-01 {timeStr}", out var result))
+					{
+						return result.ToString("HH:mm");
+					}
+				}
+
+				// Case 2: Format số không có dấu (0830, 830, 14, 8, v.v.)
+				if (int.TryParse(timeStr, out var timeInt))
+				{
+					int hour = timeInt / 100;
+					int minute = timeInt % 100;
+
+					if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60)
+					{
+						return $"{hour:D2}:{minute:D2}";
+					}
+				}
+
+				// Case 3: Format "8h30 sáng", "14h chiều", "3h sáng", v.v.
+				// Xử lý từ khóa "sáng", "trưa", "chiều", "tối"
+				string timeText = timeStr
+					.Replace("h", ":")
+					.Replace("sáng", "") // 8:30 sáng → 8:30 (không cần xử lý)
+					.Replace("trưa", "") // 12:00 trưa → 12:00
+					.Replace("chiều", "+12") // 3h chiều → 3+12:00 = 15:00
+					.Replace("tối", "+12") // 8h tối → 8+12:00 = 20:00
+					.Trim();
+
+				// Parse "3+12:00" → 15:00
+				if (timeText.Contains("+"))
+				{
+					var parts = timeText.Split('+');
+					if (int.TryParse(parts[0], out var baseHour) && int.TryParse(parts[1], out var offset))
+					{
+						int finalHour = baseHour + offset;
+						if (finalHour >= 0 && finalHour < 24)
+						{
+							return $"{finalHour:D2}:00";
+						}
+					}
+				}
+
+				// Thử parse như time bình thường
+				if (DateTime.TryParse($"2000-01-01 {timeText}", out var parsedTime))
+				{
+					return parsedTime.ToString("HH:mm");
+				}
+
+				_logger.LogWarning("❌ Could not normalize time: {TimeStr}", timeStr);
+				return null;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error normalizing time: {TimeStr}", timeStr);
+				return null;
 			}
 		}
 
@@ -771,6 +892,9 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		private bool ValidateAddToCartParams(Dictionary<string, object> @params)
 			=> @params.ContainsKey("productId");
 
+		private bool ValidateKeywordParams(Dictionary<string, object> @params)
+			=> @params.ContainsKey("keyword") && !string.IsNullOrWhiteSpace(@params["keyword"].ToString());
+
 		private bool ValidateAvailableSlotsForServiceParams(Dictionary<string, object> @params)
 		{
 			return @params.ContainsKey("serviceId") && 
@@ -916,8 +1040,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				3. getDoctorsForService - Lấy danh sách bác sĩ của dịch vụ
 				   Params: {""serviceId"": ""Tên hoặc ID dịch vụ""}
 
-				4. bookAppointment - Đặt lịch khám
-				   Params: {""customerId"": int, ""staffId"": ""Tên hoặc ID bác sĩ"", ""serviceId"": ""Tên hoặc ID dịch vụ"", ""appointmentDate"": ""YYYY-MM-DD"", ""appointmentTime"": ""HH:mm""}
+				4. bookAppointment - Đặt lịch khám (hỗ trợ buổi cụ thể trong liệu trình)
+					Params: {""customerId"": int, ""staffId"": ""Tên hoặc ID bác sĩ"", ""serviceId"": ""Tên hoặc ID dịch vụ"", ""appointmentDate"": ""YYYY-MM-DD"", ""appointmentTime"": ""HH:mm"", ""treatmentPlanId"": int (optional), ""sessionNumber"": int (optional)}
 
 				5. cancelAppointment - Hủy lịch hẹn
 				   Params: {""customerId"": int, ""staffId"": ""Tên hoặc ID bác sĩ"", ""appointmentDate"": ""YYYY-MM-DD"" (optional), ""serviceId"": ""Tên hoặc ID dịch vụ"" (optional)}
@@ -969,6 +1093,14 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				   Ví dụ:
 				   - 'Tư vấn cho tôi các sản phẩm về mụn' → {""keyword"": ""mụn""}
 
+				📌 Khi query hỏi ""đặt lịch buổi N"", ""buổi thứ N của liệu trình"":
+				   → PHẢI TRÍCH XUẤT: treatmentPlanId, sessionNumber (buổi thứ mấy)
+				   → TRÍCH XUẤT từ ""buổi N"" → sessionNumber = N
+				   Ví dụ:
+				   - 'Đặt lịch buổi 3 của liệu trình trẻ hóa da' → {""sessionNumber"": 3, ""treatmentPlanId"": ""trẻ hóa da""}
+				   - 'Cho tôi đặt lịch khám buổi 1 của gói liệu trình' → {""sessionNumber"": 1}
+				   - 'Buổi 5 của liệu trình này' → {""sessionNumber"": 5}
+
 				📌 ⭐⭐⭐ QUAN TRỌNG: Khi query hỏi ""Top N"", ""N sản phẩm bán chạy nhất"":
 				   → PHẢI DÙNG: getTopSellingProducts
 				   → PHẢI TRÍCH XUẤT số N và TRUYỀN vào {""limit"": N}
@@ -990,10 +1122,14 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				}
 
 				✅ TRÍCH XUẤT TỲ QUERY:
-				- Tên bác sĩ ""Toan"" → Truyền như là ""Toan"" (không cần tìm ID)
-				- Tên dịch vụ ""Trị mụn"" → Truyền như là ""Trị mụn""
-				- Ngày ""08-04-2026"" → Đổi thành ""2026-04-08"" (YYYY-MM-DD)
-				- Ngày ""15/4"" → Đổi thành ""2026-04-15""
+					- Tên bác sĩ ""Toan"" → Truyền như là ""Toan"" (Tên bác sĩ hoặc ID bác sĩ)
+					- Tên dịch vụ ""Trị mụn"" → Truyền như là ""Trị mụn""
+					- Ngày ""08-04-2026"" → Đổi thành ""2026-04-08"" (YYYY-MM-DD)
+					- Ngày ""15/4"" → Đổi thành ""2026-04-15""
+					- Giờ ""8h30 sáng"" → Đổi thành ""08:30"" (HH:mm)
+					- Giờ ""14h"" → Đổi thành ""14:00"" (HH:mm)
+					- Giờ ""3h chiều"" → Đổi thành ""15:00"" (HH:mm - chuyển 24h)
+					- Giờ ""8:30"" → Đổi thành ""08:30"" (HH:mm)
 
 				✅ RESPONSE EXAMPLE:
 				📍 EXAMPLE 0 - User: 'Cho tôi lịch trống của bác sĩ Toan ngày 08-04-2026'
@@ -1059,6 +1195,38 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					""keyword"": ""mụn""
 				  },
 				  ""reasoning"": ""Người dùng tìm sản phẩm về chăm sóc mụn → dùng getRecommendedProductsByCategory""
+				}
+
+				📍 EXAMPLE 6 - Đặt lịch buổi với giờ cụ thể:
+				User: 'Cho tôi đặt lịch khám buổi 3 của gói Liệu trình trẻ hóa da với bác sĩ Toan ngay 08-04-2026 lúc 8h30 sáng'
+				Response:
+				{
+				  ""tool"": ""bookAppointment"",
+				  ""params"": {
+					""customerId"": 1,
+					""staffId"": ""Toan"",
+					""serviceId"": ""Liệu trình trẻ hóa da"",
+					""appointmentDate"": ""2026-04-08"",
+					""appointmentTime"": ""08:30"",
+					""treatmentPlanId"": ""Liệu trình trẻ hóa da"",
+					""sessionNumber"": 3
+				  },
+				  ""reasoning"": ""Người dùng muốn đặt lịch buổi 3 của liệu trình với giờ cụ thể""
+				}
+
+				📍 EXAMPLE 7 - Đặt lịch không có buổi:
+				User: 'Đặt lịch khám cho tôi với bác sĩ An vào ngày 10-04-2026 lúc 14h'
+				Response:
+				{
+				  ""tool"": ""bookAppointment"",
+				  ""params"": {
+					""customerId"": 1,
+					""staffId"": ""An"",
+					""serviceId"": ""<tìm dịch vụ mặc định hoặc hỏi>"",
+					""appointmentDate"": ""2026-04-10"",
+					""appointmentTime"": ""14:00""
+				  },
+				  ""reasoning"": ""Người dùng muốn đặt lịch khám với giờ 14h (2h chiều)""
 				}
 
 				Current Date: " + DateTime.UtcNow.ToString("yyyy-MM-dd") + @"
@@ -1404,8 +1572,6 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				_logger.LogError(ex, "Error logging available treatment plans");
 			}
 		}
-		private bool ValidateKeywordParams(Dictionary<string, object> @params)
-			=> @params.ContainsKey("keyword") && !string.IsNullOrWhiteSpace(@params["keyword"].ToString());
 
 		private async Task<AIExecuteToolResponse> ExecuteGetDoctorsForTreatmentPlan(Dictionary<string, object> @params)
 		{

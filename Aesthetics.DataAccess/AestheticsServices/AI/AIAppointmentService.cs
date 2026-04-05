@@ -1,6 +1,7 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Data.AestheticsInterfaces.AI;
 using Aesthetics.Data.RepositoryInterfaces;
+using Aesthetics.Data.RepositoryServices;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Enum;
 using Aesthetics.Entities.Models.RequestModel;
@@ -22,9 +23,14 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		private readonly IAppointmentTimeLockRepository _appointmentTimeLockRepository;
 		private readonly IClinicStaffRepository _clinicStaffRepository;
 		private readonly ITreatmentPlanRepository _treatmentPlanRepository;
+		private readonly ITreatmentSessionRepository _treatmentSessionRepository; 
 		private readonly ICustomerTreatmentPlansRepository _customerTreatmentPlansRepository;
 		private readonly ICustomerTreatmentSessionsRepository _customerTreatmentSessionsRepository;
+		private readonly IAppointmentAssignmentRepository _appointmentAssignmentRepository;
 		private readonly IAppointmentService _appointmentService;
+		private readonly ICustomerRepository _customerRepository;
+		private readonly IInvoiceRepository _invoiceRepository; 
+		private readonly IInvoiceDetailsRepository _invoiceDetailsRepository; 
 
 		private const int	LUNCH_BREAK_START = 12;
 		private const int LUNCH_BREAK_END = 13;
@@ -40,9 +46,14 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			IAppointmentTimeLockRepository appointmentTimeLockRepository,
 			IClinicStaffRepository clinicStaffRepository,
 			ITreatmentPlanRepository treatmentPlanRepository,
+			ITreatmentSessionRepository treatmentSessionRepository, 
 			ICustomerTreatmentPlansRepository customerTreatmentPlansRepository,
 			ICustomerTreatmentSessionsRepository customerTreatmentSessionsRepository,
-			IAppointmentService appointmentService)
+			IAppointmentService appointmentService,
+			IAppointmentAssignmentRepository appointmentAssignmentRepository,
+			IInvoiceRepository invoiceRepository, 
+			IInvoiceDetailsRepository invoiceDetailsRepository,
+			ICustomerRepository customerRepository) 
 		{
 			_logger = logger;
 			_appointmentRepository = appointmentRepository;
@@ -51,9 +62,14 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			_appointmentTimeLockRepository = appointmentTimeLockRepository;
 			_clinicStaffRepository = clinicStaffRepository;
 			_treatmentPlanRepository = treatmentPlanRepository;
+			_treatmentSessionRepository = treatmentSessionRepository; 
 			_customerTreatmentPlansRepository = customerTreatmentPlansRepository;
 			_customerTreatmentSessionsRepository = customerTreatmentSessionsRepository;
 			_appointmentService = appointmentService;
+			_appointmentAssignmentRepository = appointmentAssignmentRepository;
+			_invoiceRepository = invoiceRepository; 
+			_invoiceDetailsRepository = invoiceDetailsRepository;
+			_customerRepository = customerRepository;
 		}
 
 		/// <summary>Bài 1-2: Lấy slot trống của bác sĩ trong một ngày</summary>
@@ -367,63 +383,327 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		}
 
 		/// <summary>Bài 7-8: Đặt lịch khám</summary>
-		public async Task<AIBookAppointmentResponse> BookAppointmentAsync(int customerId, int staffId, int serviceId, DateTime appointmentDate, string appointmentTime, int? treatmentPlanId = null)
+		public async Task<AIBookAppointmentResponse> BookAppointmentAsync(
+			int customerId,
+			int staffId,
+			int serviceId,
+			DateTime appointmentDate,
+			string appointmentTime,
+			int? treatmentPlanId = null,
+			int? sessionNumber = null)
 		{
 			try
 			{
-				_logger.LogInformation("BOOK_APPOINTMENT: customerId={CustomerId}, staffId={StaffId}, serviceId={ServiceId}, date={Date}, time={Time}", 
-					customerId, staffId, serviceId, appointmentDate.Date, appointmentTime);
+				_logger.LogInformation("BOOK_APPOINTMENT: customerId={CustomerId}, staffId={StaffId}, serviceId={ServiceId}, date={Date}, time={Time}, treatmentPlanId={TreatmentPlanId}, sessionNumber={SessionNumber}",
+					customerId, staffId, serviceId, appointmentDate.Date, appointmentTime, treatmentPlanId, sessionNumber);
 
 				var response = new AIBookAppointmentResponse();
 
-				// Parse thời gian
-				if (!TimeSpan.TryParse(appointmentTime, out var timeSpan))
+				// ✅ STEP 1: Parse appointment time
+				if (!DateTime.TryParse($"{appointmentDate:yyyy-MM-dd} {appointmentTime}", out var startTime))
 				{
 					response.Success = false;
-					response.Message = "Định dạng thời gian không hợp lệ (sử dụng HH:mm)";
+					response.Message = "Thời gian không hợp lệ";
 					return response;
 				}
 
-				var startTime = appointmentDate.Date.Add(timeSpan);
+				// ✅ STEP 2: Kiểm tra khách hàng, bác sĩ, dịch vụ
+				var customer = await _customerRepository.GetById(customerId);
+				if (customer == null || customer.DeleteStatus)
+				{
+					response.Success = false;
+					response.Message = "Khách hàng không tồn tại";
+					return response;
+				}
 
-				// Tạo appointment - không truyền ServiceId vào CreateAppointment
-				// vì nó sẽ được lấy từ TreatmentPlan hoặc Service
-				var createAppointment = new CreateAppointment
+				var staff = await _staffRepository.GetById(staffId);
+				if (staff == null || staff.DeleteStatus || staff.IsDoctor != true)
+				{
+					response.Success = false;
+					response.Message = "Bác sĩ không tồn tại";
+					return response;
+				}
+
+				var service = await _serviceRepository.GetById(serviceId);
+				if (service == null || service.DeleteStatus)
+				{
+					response.Success = false;
+					response.Message = "Dịch vụ không tồn tại";
+					return response;
+				}
+
+				_logger.LogInformation("✓ Service found: {ServiceName}", service.ServiceName);
+
+				// ✅ STEP 3: Kiểm tra lịch trống
+				var existingAppointments = await _appointmentRepository.FindByPredicate(x =>
+					x.StaffId == staffId &&
+					x.StartTime!.Value.Date == appointmentDate.Date &&
+					x.Status != (int)AppointmentStatus.Cancelled &&
+					!x.DeleteStatus);
+
+				bool hasConflict = existingAppointments.Any(a =>
+					a.StartTime!.Value.Hour == startTime.Hour && a.StartTime.Value.Minute == startTime.Minute);
+
+				if (hasConflict)
+				{
+					response.Success = false;
+					response.Message = "Bác sĩ đã có lịch vào thời gian này";
+					return response;
+				}
+
+				// ✅ STEP 4: Nếu có sessionNumber → tìm/tạo customer treatment plan/session
+				int? customerTreatmentSessionId = null;
+
+				if (sessionNumber.HasValue)
+				{
+					_logger.LogInformation("🔍 Processing treatment session: sessionNumber={SessionNumber}", sessionNumber);
+
+					// 4a: Lấy TreatmentPlans của service
+					var treatmentPlans = await _treatmentPlanRepository.FindByPredicate(x =>
+						x.ServiceId == serviceId &&
+						!x.DeleteStatus);
+
+					if (!treatmentPlans.Any())
+					{
+						response.Success = false;
+						response.Message = $"Không tìm thấy liệu trình nào cho dịch vụ '{service.ServiceName}'";
+						_logger.LogError("No treatment plans found for serviceId={ServiceId}", serviceId);
+						return response;
+					}
+
+					// Nếu treatmentPlanId được truyền, dùng cái đó. Nếu không, lấy treatment plan đầu tiên
+					TreatmentPlanEntity selectedTreatmentPlan = null;
+
+					if (treatmentPlanId.HasValue)
+					{
+						selectedTreatmentPlan = treatmentPlans.FirstOrDefault(x => x.Id == treatmentPlanId.Value);
+						if (selectedTreatmentPlan == null)
+						{
+							response.Success = false;
+							response.Message = $"Liệu trình ID {treatmentPlanId} không thuộc dịch vụ này";
+							return response;
+						}
+					}
+					else
+					{
+						// Lấy treatment plan đầu tiên hoặc mặc định
+						selectedTreatmentPlan = treatmentPlans.First();
+						_logger.LogInformation("No treatmentPlanId specified, using default: {PlanName}", selectedTreatmentPlan.PlanName);
+					}
+
+					_logger.LogInformation("✓ Treatment plan selected: {PlanName} (ID={PlanId})", selectedTreatmentPlan.PlanName, selectedTreatmentPlan.Id);
+
+					// 4b: Lấy TreatmentSessions của treatment plan
+					var treatmentSessions = await _treatmentSessionRepository.FindByPredicate(x =>
+						x.TreatmentPlanId == selectedTreatmentPlan.Id &&
+						!x.DeleteStatus);
+
+					if (!treatmentSessions.Any())
+					{
+						response.Success = false;
+						response.Message = $"Liệu trình '{selectedTreatmentPlan.PlanName}' không có buổi nào";
+						_logger.LogError("No treatment sessions found for planId={PlanId}", selectedTreatmentPlan.Id);
+						return response;
+					}
+
+					// Lấy TreatmentSession theo sessionNumber
+					var treatmentSession = treatmentSessions.FirstOrDefault(x => x.SessionNumber == sessionNumber);
+					if (treatmentSession == null)
+					{
+						response.Success = false;
+						response.Message = $"Buổi thứ {sessionNumber} không tồn tại trong liệu trình '{selectedTreatmentPlan.PlanName}'";
+						_logger.LogError("Treatment session #{SessionNumber} not found", sessionNumber);
+						return response;
+					}
+
+					_logger.LogInformation("✓ Treatment session found: buổi {SessionNumber}, ID={SessionId}", sessionNumber, treatmentSession.Id);
+
+					// 4c: TÌM hoặc TẠO CustomerTreatmentPlan
+					var existingCustomerTreatmentPlans = await _customerTreatmentPlansRepository.FindByPredicate(x =>
+						x.CustomerId == customerId &&
+						x.TreatmentPlanId == selectedTreatmentPlan.Id &&
+						x.Status == "ChoDatLich" &&
+						!x.DeleteStatus);
+
+					CustomerTreatmentPlanEntity customerTreatmentPlan;
+
+					if (existingCustomerTreatmentPlans.Any())
+					{
+						customerTreatmentPlan = existingCustomerTreatmentPlans.First();
+						_logger.LogInformation("✓ Existing CustomerTreatmentPlan found: ID={Id}", customerTreatmentPlan.Id);
+					}
+					else
+					{
+						customerTreatmentPlan = new CustomerTreatmentPlanEntity
+						{
+							CustomerId = customerId,
+							TreatmentPlanId = selectedTreatmentPlan.Id,
+							Status = "ChoDatLich",
+							DeleteStatus = false
+						};
+
+						var created = await _customerTreatmentPlansRepository.CreateEntity(customerTreatmentPlan);
+						if (!created)
+						{
+							response.Success = false;
+							response.Message = "Không thể tạo liệu trình cho khách hàng";
+							_logger.LogError("Failed to create CustomerTreatmentPlan");
+							return response;
+						}
+
+						_logger.LogInformation("✓ New CustomerTreatmentPlan created: ID={Id}", customerTreatmentPlan.Id);
+					}
+
+					// 4d: LẤY CustomerTreatmentSessions từ CustomerTreatmentPlan
+					var existingCustomerTreatmentSessions = await _customerTreatmentSessionsRepository.FindByPredicate(x =>
+						x.CustomerTreatmentPlanId == customerTreatmentPlan.Id &&
+						!x.DeleteStatus);
+
+					_logger.LogInformation("📋 Found {Count} CustomerTreatmentSessions for customerTreatmentPlanId={PlanId}", 
+						existingCustomerTreatmentSessions.Count(), customerTreatmentPlan.Id);
+
+					// ✅ Lấy TreatmentSession để so sánh SessionNumber
+					// TreatmentSession có SessionNumber, không phải CustomerTreatmentSession
+					CustomerTreatmentSessionEntity customerTreatmentSession = null;
+
+					foreach (var cts in existingCustomerTreatmentSessions)
+					{
+						// Lấy TreatmentSession qua navigation property hoặc query
+						var ts = await _treatmentSessionRepository.GetById(cts.TreatmentSessionId ?? 0);
+						if (ts != null && ts.SessionNumber == sessionNumber )
+						{
+							customerTreatmentSession = cts;
+							_logger.LogInformation("✓ Found CustomerTreatmentSession for SessionNumber={SessionNumber}: ID={CtsId}", 
+								sessionNumber, cts.Id);
+							break;
+						}
+					}
+
+					// Nếu không tìm thấy, tạo mới
+					if (customerTreatmentSession == null)
+					{
+						// SessionNumber được truyền vào từ user, cần tìm TreatmentSession tương ứng
+						var matchingTreatmentSession = treatmentSessions.FirstOrDefault(x => x.SessionNumber == sessionNumber);
+						if (matchingTreatmentSession == null)
+						{
+							response.Success = false;
+							response.Message = $"Buổi thứ {sessionNumber} không tồn tại";
+							_logger.LogError("Treatment session with SessionNumber={SessionNumber} not found", sessionNumber);
+							return response;
+						}
+
+						customerTreatmentSession = new CustomerTreatmentSessionEntity
+						{
+							CustomerTreatmentPlanId = customerTreatmentPlan.Id,
+							TreatmentSessionId = matchingTreatmentSession.Id,
+							Status = "ChoDatLich",
+							DeleteStatus = false
+						};
+
+						var created = await _customerTreatmentSessionsRepository.CreateEntity(customerTreatmentSession);
+						if (!created)
+						{
+							response.Success = false;
+							response.Message = "Không thể tạo buổi điều trị cho khách hàng";
+							_logger.LogError("Failed to create CustomerTreatmentSession");
+							return response;
+						}
+
+						_logger.LogInformation("✓ New CustomerTreatmentSession created: ID={Id}, TreatmentSessionId={TsId}, buổi {SessionNumber}", 
+							customerTreatmentSession.Id, matchingTreatmentSession.Id, sessionNumber);
+					}
+					else
+					{
+						_logger.LogInformation("✓ Using existing CustomerTreatmentSession: ID={Id}, buổi {SessionNumber}", 
+							customerTreatmentSession.Id, sessionNumber);
+					}
+
+					customerTreatmentSessionId = customerTreatmentSession.Id;
+				}
+
+				// ✅ STEP 5: Tạo Appointment
+				_logger.LogInformation("📅 Creating appointment: startTime={StartTime}, customerTreatmentSessionId={SessionId}",
+					startTime, customerTreatmentSessionId);
+
+				var createAppointmentRequest = new CreateAppointment
 				{
 					CustomerId = customerId,
 					StaffId = staffId,
+					CustomerTreatmentSessionId = customerTreatmentSessionId,
+					CustomerTreatmentPlanId = treatmentPlanId,
+					SessionNumber = sessionNumber,
 					StartTime = startTime,
-					CustomerTreatmentPlanId = treatmentPlanId
+					PaidAmount = 0,
+					PaymentMethod = "TienMat"
 				};
 
-				var isBooked = await _appointmentService.create(createAppointment);
+				var isBooked = await _appointmentService.create(createAppointmentRequest);
 				if (!isBooked)
 				{
 					response.Success = false;
 					response.Message = "Không thể đặt lịch. Vui lòng kiểm tra thông tin";
+					_logger.LogError("❌ Failed to create appointment");
 					return response;
 				}
 
-				// Lấy thông tin lịch hẹn vừa tạo
+				_logger.LogInformation("✓ Appointment created successfully");
+
+				// ✅ STEP 6: Lấy thông tin Appointment vừa tạo
 				var appointments = await _appointmentRepository.FindByPredicate(x =>
 					x.CustomerId == customerId &&
 					x.StaffId == staffId &&
 					x.StartTime == startTime &&
 					!x.DeleteStatus);
 
-				var appointment = appointments.FirstOrDefault();
-				if (appointment != null)
+				var createdAppointment = appointments.FirstOrDefault();
+				if (createdAppointment != null)
 				{
+					_logger.LogInformation("✓ Found created appointment: ID={AppointmentId}", createdAppointment.Id);
+					// ✅ STEP 7 (cũ): Tạo AppointmentAssignment
+					_logger.LogInformation("📌 Creating AppointmentAssignment for staffId={StaffId}", staffId);
+
+					var appointmentAssignment = new AppointmentAssignmentEntity
+					{
+						AppointmentId = createdAppointment.Id,
+						StaffId = staffId,
+						AssignedDate = DateTime.UtcNow,
+						Status = (int)AppointmentStatus.Booked,
+						DeleteStatus = false
+					};
+
+					var assignmentCreated = await _appointmentAssignmentRepository.CreateEntity(appointmentAssignment);
+					if (assignmentCreated)
+					{
+						_logger.LogInformation("✓ AppointmentAssignment created: ID={AssignmentId}", appointmentAssignment.Id);
+					}
+					else
+					{
+						_logger.LogWarning("⚠ Failed to create AppointmentAssignment, but appointment still created");
+					}
+
+					// ✅ STEP 8: Trả về response
 					response.Success = true;
-					response.AppointmentId = appointment.Id;
-					response.Message = $"Đặt lịch thành công vào lúc {startTime:HH:mm} ngày {startTime:dd/MM/yyyy}";
+					response.AppointmentId = createdAppointment.Id;
+
+					var message = sessionNumber.HasValue
+						? $"✅ Đặt lịch buổi {sessionNumber} thành công vào lúc {startTime:HH:mm} ngày {startTime:dd/MM/yyyy}"
+						: $"✅ Đặt lịch thành công vào lúc {startTime:HH:mm} ngày {startTime:dd/MM/yyyy}";
+
+					response.Message = message;
+					_logger.LogInformation("✓ Booking completed successfully: {Message}", message);
+				}
+				else
+				{
+					response.Success = false;
+					response.Message = "Không thể lấy thông tin lịch hẹn vừa tạo";
+					_logger.LogError("❌ Could not retrieve created appointment");
 				}
 
 				return response;
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "BOOK_APPOINTMENT_ERROR: Exception occurred");
+				_logger.LogError(ex, "BOOK_APPOINTMENT_ERROR: Exception occurred - {Message}", ex.Message);
 				return new AIBookAppointmentResponse
 				{
 					Success = false,

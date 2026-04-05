@@ -19,11 +19,18 @@ namespace Aesthetics.Data.AestheticsInterfaces.AI
         /// <summary>Lấy danh sách TẤT CẢ bác sĩ của một liệu trình</summary>
         Task<AIServiceDoctorsResponse> GetDoctorsForTreatmentPlanAsync(int treatmentPlanId);
 
-        /// <summary>Bài 7-8: Đặt lịch khám</summary>
-        Task<AIBookAppointmentResponse> BookAppointmentAsync(int customerId, int staffId, int serviceId, DateTime appointmentDate, string appointmentTime, int? treatmentPlanId = null);
+		/// <summary>Bài 7-8: Đặt lịch khám (hỗ trợ đặt lịch cho buổi cụ thể trong liệu trình)</summary>
+		Task<AIBookAppointmentResponse> BookAppointmentAsync(
+			int customerId,
+			int staffId,
+			int serviceId,
+			DateTime appointmentDate,
+			string appointmentTime,
+			int? treatmentPlanId = null,
+			int? sessionNumber = null);
 
-        /// <summary>Bài 9-11: Hủy lịch hẹn</summary>
-        Task<AICancelAppointmentResponse> CancelAppointmentAsync(int customerId, int staffId, DateTime? appointmentDate = null, int? serviceId = null);
+		/// <summary>Bài 9-11: Hủy lịch hẹn</summary>
+		Task<AICancelAppointmentResponse> CancelAppointmentAsync(int customerId, int staffId, DateTime? appointmentDate = null, int? serviceId = null);
 
         /// <summary>Tìm bác sĩ của dịch vụ và trả về slot trống cho ngày cụ thể</summary>
         Task<AIAvailableSlotsForServiceResponse> GetAvailableSlotsForServiceAsync(int serviceId, DateTime date, int? treatmentPlanId = null);
