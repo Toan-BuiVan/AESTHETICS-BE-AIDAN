@@ -83,6 +83,18 @@ namespace Aesthetics.Data.AestheticsServices.AI
 
 					new AITool
 					{
+						Name = "getTreatmentPackagesByServiceName",
+						Description = "⭐ Lấy thông tin các gói điều trị của liệu trình (ví dụ: trẻ hóa da) kèm các buổi điều trị chi tiết",
+						InputSchema = new Dictionary<string, string>
+						{
+							{ "serviceName", "string - Tên dịch vụ/liệu trình (ví dụ: 'trẻ hóa da', 'trị nám', 'chăm sóc da')" }
+						},
+						OutputDescription = "Thông tin dịch vụ và danh sách gói: { service: { name, price, description }, packages: [{ planName, totalSessions, price, description, sessions: [{ sessionNumber, name, description, duration }] }] }",
+						Example = "serviceName: 'trẻ hóa da' hoặc 'trị nám' hoặc 'chăm sóc da'"
+					},
+
+					new AITool
+					{
 						Name = "getDoctorAvailableSlotsForTreatmentPlan",
 						Description = "Lấy slot trống của bác sĩ cho liệu trình cụ thể trong một ngày",
 						InputSchema = new Dictionary<string, string>
@@ -336,6 +348,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					"getTopSellingProducts" => await ExecuteGetTopSellingProducts(request.LLMResponse.Params),
 					"getProductDetail" => await ExecuteGetProductDetail(request.LLMResponse.Params),
 					"getProductsByPriceRange" => await ExecuteGetProductsByPriceRange(request.LLMResponse.Params),
+					"getTreatmentPackagesByServiceName" => await ExecuteGetTreatmentPackagesByServiceName(request.LLMResponse.Params),
 
 					// Cart tools
 					"addProductToCart" => await ExecuteAddProductToCart(request.LLMResponse.Params, request.UserId),
@@ -376,6 +389,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					"getRecommendedProductsByCategory" => ValidateKeywordParams(@params),
 					"getProductDetail" => ValidateProductParams(@params),
 					"getProductsByPriceRange" => ValidatePriceRangeParams(@params),
+					"getTreatmentPackagesByServiceName" => ValidateServiceNameParams(@params),
 					"addProductToCart" => ValidateAddToCartParams(@params),
 					"removeProductFromCart" => ValidateProductParams(@params),
 					"getAvailableSlotsForService" => ValidateAvailableSlotsForServiceParams(@params),
@@ -895,6 +909,15 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		private bool ValidateKeywordParams(Dictionary<string, object> @params)
 			=> @params.ContainsKey("keyword") && !string.IsNullOrWhiteSpace(@params["keyword"].ToString());
 
+		private bool ValidateServiceNameParams(Dictionary<string, object> @params)
+		{
+			if (@params == null || !@params.ContainsKey("serviceName"))
+				return false;
+
+			var serviceName = @params["serviceName"]?.ToString();
+			return !string.IsNullOrWhiteSpace(serviceName);
+		}
+
 		private bool ValidateAvailableSlotsForServiceParams(Dictionary<string, object> @params)
 		{
 			return @params.ContainsKey("serviceId") && 
@@ -1073,7 +1096,19 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				14. getRecommendedProductsByCategory - ⭐ Tư vấn sản phẩm theo yêu cầu/loại (da, mụn, lão hóa, v.v.)
 				   Params: {""keyword"": ""Từ khóa tìm kiếm (ví dụ: 'chăm sóc da', 'mụn', 'lão hóa')""}
 
+				15. getTreatmentPackagesByServiceName - ⭐⭐⭐ Lấy thông tin các gói điều trị + buổi điều trị chi tiết
+					Params: {""serviceName"": ""Tên dịch vụ/liệu trình (ví dụ: 'trẻ hóa da', 'trị nám')""}
+
 				⚡ CRITICAL DECISION RULES:
+
+				📌 Khi query hỏi ""gói điều trị"", ""liệu trình"", ""buổi điều trị"", ""thông tin các buổi"":
+				   → PHẢI DÙNG: getTreatmentPackagesByServiceName (trả về gói + buổi chi tiết)
+				   → KHÔNG dùng: getDoctorsForService
+				   Ví dụ:
+				   - 'Cho tôi thông tin các gói điều trị của liệu trình trẻ hóa da' → getTreatmentPackagesByServiceName
+				   - 'Liệu trình trẻ hóa da có những buổi nào?' → getTreatmentPackagesByServiceName
+				   - 'Chi tiết các buổi điều trị của dịch vụ trị nám' → getTreatmentPackagesByServiceName
+				   - 'Các gói liệu trình của trẻ hóa da' → getTreatmentPackagesByServiceName
 
 				📌 Khi query hỏi ""danh sách bác sĩ"", ""tất cả bác sĩ"", ""các bác sĩ"":
 				   → PHẢI DÙNG: getDoctorsForService (trả về tất cả bác sĩ)
@@ -1187,7 +1222,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				  ""reasoning"": ""Người dùng hỏi top 5 → trích xuất số 5 → limit = 5""
 				}
 
-				📍 EXAMPLE 5 : 'Tư vấn cho tôi các sản phẩm về mụn'
+				📍 EXAMPLE 5 - 'Tư vấn cho tôi các sản phẩm về mụn'
 				Response:
 				{
 				  ""tool"": ""getRecommendedProductsByCategory"",
@@ -1227,6 +1262,17 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					""appointmentTime"": ""14:00""
 				  },
 				  ""reasoning"": ""Người dùng muốn đặt lịch khám với giờ 14h (2h chiều)""
+				}
+
+				📍 EXAMPLE 8 - Gói điều trị + buổi chi tiết:
+				User: 'Cho tôi thông tin các gói điều trị của liệu trình trẻ hóa da'
+				Response:
+				{
+				  ""tool"": ""getTreatmentPackagesByServiceName"",
+				  ""params"": {
+					""serviceName"": ""trẻ hóa da""
+				  },
+				  ""reasoning"": ""Người dùng muốn xem các gói điều trị và buổi chi tiết của liệu trình trẻ hóa da""
 				}
 
 				Current Date: " + DateTime.UtcNow.ToString("yyyy-MM-dd") + @"
@@ -1616,6 +1662,36 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "Error in ExecuteGetRecommendedProductsByCategory");
+				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
+			}
+		}
+
+		private async Task<AIExecuteToolResponse> ExecuteGetTreatmentPackagesByServiceName(Dictionary<string, object> @params)
+		{
+			try
+			{
+				var serviceName = @params["serviceName"].ToString();
+				if (string.IsNullOrWhiteSpace(serviceName))
+				{
+					return new AIExecuteToolResponse
+					{
+						Success = false,
+						Error = "Tên dịch vụ không được để trống"
+					};
+				}
+
+				var result = await _aiAnalyticsService.GetTreatmentPackagesByServiceNameAsync(serviceName);
+				return new AIExecuteToolResponse
+				{
+					Success = result.Success,
+					Data = result,
+					Message = result.Message,
+					Error = result.Success ? null : result.Message
+				};
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error in ExecuteGetTreatmentPackagesByServiceName");
 				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
 			}
 		}

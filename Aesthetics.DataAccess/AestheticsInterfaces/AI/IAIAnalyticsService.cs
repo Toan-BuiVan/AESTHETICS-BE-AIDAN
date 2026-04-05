@@ -28,5 +28,8 @@ namespace Aesthetics.Data.AestheticsInterfaces.AI
 
 		/// <summary>Bài 15: Lấy sản phẩm theo khoảng giá</summary>
 		Task<AIProductsByPriceResponse> GetProductsByPriceRangeAsync(decimal minPrice, decimal maxPrice, int? serviceTypeId = null);
+
+		/// <summary>Bài 16: Lấy thông tin các gói điều trị của liệu trình trẻ hóa da kèm các buổi điều trị</summary>
+		Task<AITreatmentPackagesResponse> GetTreatmentPackagesByServiceNameAsync(string serviceName);
 	}
 }

@@ -1,5 +1,6 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces.AI;
 using Aesthetics.Data.RepositoryInterfaces;
+using Aesthetics.Data.RepositoryServices;
 using Aesthetics.Entities.Models.ResponseModel.AI;
 using Microsoft.Extensions.Logging;
 using System;
@@ -19,6 +20,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		private readonly IInvoiceDetailsRepository _invoiceDetailsRepository;
 		private readonly ICartProductRepository _cartProductRepository;
 		private readonly IStaffRepository _staffRepository;
+		private readonly ITreatmentSessionRepository _treatmentSessionRepository;
 
 		public AIAnalyticsService(
 			ILogger<AIAnalyticsService> logger,
@@ -28,7 +30,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			ITreatmentPlanRepository treatmentPlanRepository,
 			IInvoiceDetailsRepository invoiceDetailsRepository,
 			ICartProductRepository cartProductRepository,
-			IStaffRepository staffRepository)
+			IStaffRepository staffRepository,
+			ITreatmentSessionRepository treatmentSessionRepository)
 		{
 			_logger = logger;
 			_serviceRepository = serviceRepository;
@@ -38,6 +41,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			_invoiceDetailsRepository = invoiceDetailsRepository;
 			_cartProductRepository = cartProductRepository;
 			_staffRepository = staffRepository;
+			_treatmentSessionRepository = treatmentSessionRepository;
 		}
 
 		/// <summary>Bài 4: Lấy dịch vụ nhiều người dùng nhất</summary>
@@ -489,6 +493,102 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					Success = false,
 					Message = $"Lỗi: {ex.Message}",
 					Products = new List<AIProductPrice>()
+				};
+			}
+		}
+
+		/// <summary>Bài 14: Lấy thông tin các gói điều trị của liệu trình trẻ hóa da kèm các buổi điều trị</summary>
+		public async Task<AITreatmentPackagesResponse> GetTreatmentPackagesByServiceNameAsync(string serviceName)
+		{
+			try
+			{
+				_logger.LogInformation("GET_TREATMENT_PACKAGES: serviceName={ServiceName}", serviceName);
+
+				var response = new AITreatmentPackagesResponse();
+
+				// Lấy dịch vụ theo tên
+				var service = await _serviceRepository.FindByPredicate(x =>
+					x.ServiceName.Contains(serviceName) &&
+					!x.DeleteStatus);
+
+				if (!service.Any())
+				{
+					response.Success = false;
+					response.Message = $"Không tìm thấy dịch vụ '{serviceName}'";
+					return response;
+				}
+
+				var serviceEntity = service.FirstOrDefault();
+
+				// Ánh xạ thông tin dịch vụ
+				response.Service = new ServicePackageInfo
+				{
+					ServiceId = serviceEntity.Id,
+					ServiceName = serviceEntity.ServiceName,
+					Description = serviceEntity.Description,
+					Price = serviceEntity.Price ?? 0,
+					Duration = serviceEntity.Duration,
+					ServiceImage = serviceEntity.ServiceImage
+				};
+
+				// Lấy tất cả gói điều trị của dịch vụ này
+				var treatmentPlans = await _treatmentPlanRepository.FindByPredicate(x =>
+					x.ServiceId == serviceEntity.Id &&
+					!x.DeleteStatus);
+
+				if (!treatmentPlans.Any())
+				{
+					response.Success = true;
+					response.Message = $"Dịch vụ '{serviceName}' không có gói điều trị nào";
+					return response;
+				}
+
+				// Xử lý từng gói điều trị
+				foreach (var plan in treatmentPlans.OrderBy(x => x.Id))
+				{
+					var packageInfo = new TreatmentPackageInfo
+					{
+						PlanId = plan.Id,
+						PlanName = plan.PlanName,
+						TotalSessions = plan.TotalSessions,
+						Price = plan.Price,
+						SessionInterval = plan.SessionInterval,
+						Description = plan.Description
+					};
+
+					// Lấy các buổi điều trị của gói này
+					var sessions = await _treatmentSessionRepository.FindByPredicate(x =>
+						x.TreatmentPlanId == plan.Id &&
+						!x.DeleteStatus);
+
+					// Ánh xạ thông tin buổi điều trị
+					packageInfo.Sessions = sessions
+						.OrderBy(x => x.SessionNumber ?? 0)
+						.Select(s => new TreatmentSessionInfo
+						{
+							SessionId = s.Id,
+							SessionNumber = s.SessionNumber,
+							SessionName = s.SessionName,
+							Description = s.Description,
+							Duration = s.Duration
+						})
+						.ToList();
+
+					response.TreatmentPackages.Add(packageInfo);
+				}
+
+				response.Success = true;
+				response.Message = $"Lấy thông tin {response.TreatmentPackages.Count} gói điều trị của dịch vụ '{serviceName}' thành công";
+
+				return response;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "GET_TREATMENT_PACKAGES_ERROR: Exception occurred");
+				return new AITreatmentPackagesResponse
+				{
+					Success = false,
+					Message = $"Lỗi: {ex.Message}"
 				};
 			}
 		}
