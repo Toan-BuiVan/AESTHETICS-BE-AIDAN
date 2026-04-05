@@ -90,7 +90,17 @@ namespace Aesthetics.Data.AestheticsServices
 		public async Task<bool> create(CreateAppointment appointment)
 		{
 			try
-			{	
+			{
+				if (appointment.ServiceId.HasValue && appointment.ServiceId.Value > 0)
+				{
+					var services = await _serviceRepository.GetById(appointment.ServiceId.Value);
+					if (services != null && services.IsCourse != true)
+					{
+						_logger.LogInformation("ℹ️ SINGLE_SERVICE detected: ServiceId={ServiceId}, IsCourse={IsCourse}",
+							appointment.ServiceId, services.IsCourse);
+						return await CreateSingleServiceAppointment(appointment);
+					}
+				}
 				_logger.LogInformation("CREATE_APPOINTMENT_START: Begin creating appointment");
 				if (!ValidateBasicInput(appointment))
 				{
@@ -251,7 +261,7 @@ namespace Aesthetics.Data.AestheticsServices
 					service,
 					appointmentEntity.Id,
 					treatmentSession.TreatmentPlanId,
-					treatmentSession.Id);  // ✅ BỔSUNG: Truyền TreatmentSessionId
+					treatmentSession.Id);  
 
 				_logger.LogInformation("SEND_EMAIL: Sending confirmation email");
 				try
@@ -275,6 +285,258 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
+		private async Task<bool> CreateSingleServiceAppointment(CreateAppointment appointment)
+		{
+			try
+			{
+				_logger.LogInformation("[SINGLE_SERVICE] CreateSingleServiceAppointment START: customerId={CustomerId}, staffId={StaffId}, serviceId={ServiceId}, startTime={StartTime}",
+					appointment.CustomerId, appointment.StaffId, appointment.ServiceId, appointment.StartTime);
+
+				// ✅ STEP 1: Validate basic input
+				if (appointment.CustomerId <= 0 || appointment.StaffId <= 0 || appointment.ServiceId <= 0 || !appointment.StartTime.HasValue)
+				{
+					_logger.LogWarning("[SINGLE_SERVICE] VALIDATE_FAILED: Invalid input");
+					return false;
+				}
+
+				// ✅ STEP 2: Get and validate service
+				var service = await _serviceRepository.GetById(appointment.ServiceId.Value);
+				if (service == null || service.DeleteStatus)
+				{
+					_logger.LogWarning("[SINGLE_SERVICE] SERVICE_NOT_FOUND: ServiceId={ServiceId}", appointment.ServiceId);
+					return false;
+				}
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ Service found: {ServiceName}, Price={Price}, Duration={Duration}",
+					service.ServiceName, service.Price, service.Duration);
+
+				// ✅ STEP 3: Get and validate customer, staff
+				var customer = await _customerRepository.GetById(appointment.CustomerId.Value);
+				if (customer == null || customer.DeleteStatus)
+				{
+					_logger.LogWarning("[SINGLE_SERVICE] CUSTOMER_NOT_FOUND: CustomerId={CustomerId}", appointment.CustomerId);
+					return false;
+				}
+
+				var staff = await _staffRepository.GetById(appointment.StaffId.Value);
+				if (staff == null || staff.DeleteStatus || staff.IsDoctor != true)
+				{
+					_logger.LogWarning("[SINGLE_SERVICE] STAFF_NOT_FOUND: StaffId={StaffId}", appointment.StaffId);
+					return false;
+				}
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ Customer and Staff validated: {Customer}, {Staff}",
+					customer.FullName, staff.FullName);
+
+				// ✅ STEP 4: Get clinic for staff
+				int clinicId = await GetClinicForStaff(appointment.StaffId.Value);
+				if (clinicId == 0)
+				{
+					_logger.LogWarning("[SINGLE_SERVICE] CLINIC_NOT_FOUND: No clinic for staffId={StaffId}", appointment.StaffId);
+					return false;
+				}
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ Clinic found: {ClinicId}", clinicId);
+
+				// ✅ STEP 5: Check slot conflict with existing appointments
+				var existingAppointments = await _appointmentRepositoty.FindByPredicate(x =>
+					x.StaffId == appointment.StaffId &&
+					x.StartTime!.Value.Date == appointment.StartTime.Value.Date &&
+					x.Status != (int)AppointmentStatus.Cancelled &&
+					!x.DeleteStatus);
+
+				bool hasConflict = existingAppointments.Any(a =>
+					a.StartTime!.Value.Hour == appointment.StartTime.Value.Hour &&
+					a.StartTime.Value.Minute == appointment.StartTime.Value.Minute);
+
+				if (hasConflict)
+				{
+					_logger.LogWarning("[SINGLE_SERVICE] SLOT_CONFLICT: Time slot already booked");
+					return false;
+				}
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ Time slot available (no existing appointments)");
+
+				// ✅ STEP 5.5: Check AppointmentTimeLocks for clinic
+				_logger.LogInformation("[SINGLE_SERVICE] 🔒 Checking AppointmentTimeLocks for clinicId={ClinicId}, date={Date}",
+					clinicId, appointment.StartTime.Value.Date);
+
+				var timeLocks = await _appointmentTimeLockRepository.FindByPredicate(x =>
+					x.ClinicId == clinicId &&
+					x.StartTime!.Value.Date == appointment.StartTime.Value.Date &&
+					!x.DeleteStatus);
+
+				if (timeLocks.Any())
+				{
+					_logger.LogInformation("[SINGLE_SERVICE] Found {Count} time locks for date {Date}",
+						timeLocks.Count(), appointment.StartTime.Value.Date);
+
+					// ✅ Kiểm tra xem appointment có nằm trong khoảng giờ khóa không (StartTime → EndTime)
+					var appointmentStartTime = appointment.StartTime.Value;
+
+					_logger.LogInformation("[SINGLE_SERVICE] Appointment time: {AppointmentTime}, checking against time locks...",
+						appointmentStartTime.ToString("HH:mm"));
+
+					var hasTimeLockConflict = timeLocks.Any(timelock =>
+						timelock.StartTime.HasValue &&
+						timelock.EndTime.HasValue &&
+						appointmentStartTime >= timelock.StartTime.Value &&
+						appointmentStartTime < timelock.EndTime.Value);
+
+					if (hasTimeLockConflict)
+					{
+						_logger.LogWarning("[SINGLE_SERVICE] TIME_LOCK_CONFLICT: Appointment time {Time} falls within a locked time range",
+							appointmentStartTime.ToString("HH:mm"));
+						return false;
+					}
+					else
+					{
+						_logger.LogInformation("[SINGLE_SERVICE] ✓ Appointment time not in any time lock range");
+					}
+				}
+				else
+				{
+					_logger.LogInformation("[SINGLE_SERVICE] ✓ No time locks found for date {Date}",
+						appointment.StartTime.Value.Date);
+				}
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ No time lock conflicts found - slot is available");
+
+				// ✅ STEP 6: Get next number order
+				var appointmentDate = appointment.StartTime.Value.Date;
+				var nextNumberOrder = await GetNextNumberOrder(clinicId, appointmentDate);
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ NextNumberOrder: {Order}", nextNumberOrder);
+
+				// ✅ STEP 7: Create Appointment
+				_logger.LogInformation("[SINGLE_SERVICE] 📅 Creating appointment");
+
+				var appointmentEntity = new AppointmentEntity
+				{
+					CustomerId = appointment.CustomerId,
+					StaffId = appointment.StaffId,
+					ServiceId = appointment.ServiceId,
+					CustomerTreatmentPlanId = null,
+					CustomerTreatmentSessionId = null,
+					StartTime = appointment.StartTime,
+					Status = (int)AppointmentStatus.Booked,
+					PaymentStatus = appointment.TypeInvoice.HasValue ? (int?)appointment.TypeInvoice.Value : 0,
+					DeleteStatus = false,
+					CreationDate = DateTime.UtcNow,
+					IsConfirmationEmailSent = false,
+					IsReminderEmailSent = false,
+					ReminderHoursBefore = DEFAULT_REMINDER_HOURS
+				};
+
+				var created = await _appointmentRepositoty.CreateEntity(appointmentEntity);
+				if (!created)
+				{
+					_logger.LogError("[SINGLE_SERVICE] CREATE_APPOINTMENT_FAILED: Failed to create appointment");
+					return false;
+				}
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ Appointment created: ID={AppointmentId}", appointmentEntity.Id);
+
+				// ✅ STEP 8: Create AppointmentAssignment
+				_logger.LogInformation("[SINGLE_SERVICE] 📌 Creating AppointmentAssignment");
+
+				var assignment = CreateAppointmentAssignment(
+					appointmentEntity.Id,
+					appointment.StaffId ?? 0,
+					clinicId,
+					service,
+					appointment.StartTime.Value,
+					nextNumberOrder,
+					appointmentEntity.PaymentStatus ?? 0,
+					appointmentEntity.Status ?? 0);
+
+				var assignmentCreated = await _appointmentAssignmentRepository.CreateEntity(assignment);
+				if (!assignmentCreated)
+				{
+					_logger.LogWarning("[SINGLE_SERVICE] ASSIGNMENT_FAILED: Failed to create appointment assignment");
+				}
+				else
+				{
+					_logger.LogInformation("[SINGLE_SERVICE] ✓ AppointmentAssignment created: ID={AssignmentId}", assignment.Id);
+				}
+
+				// ✅ STEP 9: Create Invoice
+				_logger.LogInformation("[SINGLE_SERVICE] 📄 Creating Invoice");
+
+				var invoice = new InvoiceEntity
+				{
+					CustomerId = appointment.CustomerId,
+					ServiceId = appointment.ServiceId,
+					TotalMoney = service.Price ?? 0,
+					DiscountValue = 0,
+					FinalPrice = service.Price ?? 0,
+					Status = "ChuaThanhToan",
+					PaymentMethod = appointment.PaymentMethod ?? "TienMat",
+					DateCreated = DateTime.UtcNow,
+					Type = "DichVu",
+					DeleteStatus = false
+				};
+
+				var invoiceCreated = await _invoiceRepository.CreateEntity(invoice);
+				if (!invoiceCreated)
+				{
+					_logger.LogError("[SINGLE_SERVICE] CREATE_INVOICE_FAILED: Failed to create invoice");
+					return false;
+				}
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ Invoice created: ID={InvoiceId}, Amount={Amount}",
+					invoice.Id, invoice.FinalPrice);
+
+				// ✅ STEP 10: Create InvoiceDetails
+				_logger.LogInformation("[SINGLE_SERVICE] 📋 Creating InvoiceDetails");
+
+				var invoiceDetail = new InvoiceDetailEntity
+				{
+					InvoiceId = invoice.Id,
+					ServiceId = appointment.ServiceId,
+					Price = service.Price ?? 0,
+					Quantity = 1,
+					TotalMoney = service.Price ?? 0,
+					DiscountValue = 0,
+					FinalPrice = service.Price ?? 0,
+					Status = "ChuaThanhToan",
+					StatusComment = false,
+					Type = "DichVu",
+					DeleteStatus = false
+				};
+
+				var detailCreated = await _invoiceDetailsRepository.CreateEntity(invoiceDetail);
+				if (!detailCreated)
+				{
+					_logger.LogError("[SINGLE_SERVICE] CREATE_INVOICE_DETAIL_FAILED: Failed to create invoice detail");
+					return false;
+				}
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ InvoiceDetail created: ID={DetailId}, Price={Price}",
+					invoiceDetail.Id, invoiceDetail.FinalPrice);
+
+				// ✅ STEP 11: Send confirmation email
+				_logger.LogInformation("[SINGLE_SERVICE] 📧 Sending confirmation email");
+				try
+				{
+					await SendConfirmationEmail(appointmentEntity);
+				}
+				catch (Exception ex)
+				{
+					_logger.LogWarning(ex, "[SINGLE_SERVICE] SEND_EMAIL_EXCEPTION: Failed to send email, but appointment was created successfully");
+				}
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ Single service appointment completed successfully: AppointmentId={AppointmentId}, InvoiceId={InvoiceId}",
+					appointmentEntity.Id, invoice.Id);
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "[SINGLE_SERVICE] CREATE_SINGLE_SERVICE_APPOINTMENT_EXCEPTION: {Message}", ex.Message);
+				return false;
+			}
+		}
 
 		public async Task<bool> delete(DeleteAppointment appointment)
 		{

@@ -12,6 +12,8 @@ namespace Aesthetics.Entities.Models.RequestModel
 	{
 		public int? CustomerId { get; set; }
 
+		public int? ServiceId { get; set; }
+
 		public int? StaffId { get; set; }
 
 		public int? CustomerTreatmentSessionId { get; set; }

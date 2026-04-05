@@ -629,6 +629,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				{
 					CustomerId = customerId,
 					StaffId = staffId,
+					ServiceId = serviceId,
 					CustomerTreatmentSessionId = customerTreatmentSessionId,
 					CustomerTreatmentPlanId = treatmentPlanId,
 					SessionNumber = sessionNumber,

@@ -516,6 +516,7 @@ namespace Aesthetics.Data.AestheticsServices
 					.Select(x => new ServiceResponseModel
 					{
 						Id = x.Id,
+						ServiceTypeId = x.ServiceTypeId,
 						ServiceTypeName = x.ServiceType?.ServiceTypeName,
 						ServiceName = x.ServiceName,
 						Description = x.Description,
