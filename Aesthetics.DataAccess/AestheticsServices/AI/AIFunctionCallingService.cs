@@ -162,27 +162,27 @@ namespace Aesthetics.Data.AestheticsServices.AI
 
 					new AITool
 					{
-						Name = "getBestDoctorForTreatment",
-						Description = "Bác sĩ có nhiều lịch đặt nhất cho liệu trình",
+						Name = "getBestDoctorForService",
+						Description = "Bác sĩ có nhiều lịch đặt nhất cho dịch vụ",
 						InputSchema = new Dictionary<string, string>
 						{
-							{ "treatmentPlanId", "int - ID liệu trình" }
+							{ "serviceId", "int - ID dịch vụ" }
 						},
 						OutputDescription = "Thông tin bác sĩ: { staffId, name, specialization, appointmentCount, rating }",
-						Example = "treatmentPlanId: 0"
+						Example = "serviceId: 0"
 					},
 
 					new AITool
 					{
-						Name = "getServicesByPriceRange",
-						Description = "Dịch vụ/liệu trình theo khoảng giá",
-						InputSchema = new Dictionary<string, string>
-						{
-							{ "minPrice", "decimal - Giá tối thiểu" },
-							{ "maxPrice", "decimal - Giá tối đa" }
-						},
-						OutputDescription = "{ services: [...] }",
-						Example = "minPrice: 100000, maxPrice: 500000"
+					 Name = "getServicesByPriceRange",
+					 Description = "Dịch vụ/liệu trình theo khoảng giá",
+					 InputSchema = new Dictionary<string, string>
+					 {
+						 { "minPrice", "decimal - Giá tối thiểu" },
+						 { "maxPrice", "decimal - Giá tối đa" }
+					 },
+					 OutputDescription = "{ services: [...] }",
+					 Example = "minPrice: 100000, maxPrice: 500000"
 					},
 
 					new AITool
@@ -297,7 +297,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 
 					// Analytics tools
 					"getMostPopularServices" => await ExecuteGetMostPopularServices(request.LLMResponse.Params),
-					"getBestDoctorForTreatment" => await ExecuteGetBestDoctorForTreatment(request.LLMResponse.Params),
+					"getBestDoctorForService" => await ExecuteGetBestDoctorForService(request.LLMResponse.Params),
 					"getServicesByPriceRange" => await ExecuteGetServicesByPriceRange(request.LLMResponse.Params),
 					"getTopSellingProducts" => await ExecuteGetTopSellingProducts(request.LLMResponse.Params),
 					"getProductDetail" => await ExecuteGetProductDetail(request.LLMResponse.Params),
@@ -336,7 +336,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					"bookAppointment" => ValidateBookingParams(@params),
 					"cancelAppointment" => ValidateCancelParams(@params),
 					"getMostPopularServices" => true,
-					"getBestDoctorForTreatment" => ValidateTreatmentPlanParams(@params),
+					"getBestDoctorForService" => ValidateServiceParams(@params),
 					"getServicesByPriceRange" => ValidatePriceRangeParams(@params),
 					"getTopSellingProducts" => true,
 					"getProductDetail" => ValidateProductParams(@params),
@@ -559,12 +559,12 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			}
 		}
 
-		private async Task<AIExecuteToolResponse> ExecuteGetBestDoctorForTreatment(Dictionary<string, object> @params)
+		private async Task<AIExecuteToolResponse> ExecuteGetBestDoctorForService(Dictionary<string, object> @params)
 		{
 			try
 			{
-				var treatmentPlanId = Convert.ToInt32(@params["treatmentPlanId"]);
-				var result = await _aiAnalyticsService.GetBestDoctorForTreatmentPlanAsync(treatmentPlanId);
+				var serviceId = Convert.ToInt32(@params["serviceId"]);
+				var result = await _aiAnalyticsService.GetBestDoctorForServiceAsync(serviceId);
 				return new AIExecuteToolResponse
 				{
 					Success = result.Success,
@@ -575,7 +575,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "Error in ExecuteGetBestDoctorForTreatment");
+				_logger.LogError(ex, "Error in ExecuteGetBestDoctorForService");
 				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
 			}
 		}
@@ -899,8 +899,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				6. getMostPopularServices - Dịch vụ được đặt lịch nhiều nhất
 				   Params: {}
 
-				7. getBestDoctorForTreatment - Bác sĩ tốt nhất của liệu trình
-				   Params: {""treatmentPlanId"": int}
+				7. getBestDoctorForService - Bác sĩ tốt nhất của dịch vụ
+				   Params: {""serviceId"": ""Tên hoặc ID dịch vụ""}
 
 				8. getServicesByPriceRange - Dịch vụ theo khoảng giá
 				   Params: {""minPrice"": decimal, ""maxPrice"": decimal}
@@ -951,85 +951,6 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				Current Date: " + DateTime.UtcNow.ToString("yyyy-MM-dd") + @"
 				Current Time: " + DateTime.UtcNow.ToString("HH:mm:ss");
 		}
-
-		//private string BuildSystemPrompt()
-		//{
-		//	return @"Bạn là một trợ lý AI cho hệ thống quản lý phòng khám thẩm mỹ. 
-		//		Nhiệm vụ của bạn là:
-		//		1. Hiểu yêu cầu của người dùng bằng tiếng Việt
-		//		2. Xác định TOOL CHÍNH XÁC cần sử dụng
-		//		3. TRÍCH XUẤT tên bác sĩ, tên dịch vụ từ query (KHÔNG cần ID)
-		//		4. Trả về JSON response
-
-		//		AVAILABLE TOOLS:
-				
-		//		📌 APPOINTMENT TOOLS:
-				
-		//		1. getDoctorAvailableSlots - Lấy lịch trống của bác sĩ trong một ngày
-		//		   Params: {""staffId"": ""Tên bác sĩ hoặc ID bác sĩ"", ""date"": ""YYYY-MM-DD""}
-   
-		//		2. getDoctorAvailableSlotsForTreatmentPlan - Lấy lịch trống của bác sĩ cho liệu trình cụ thể trong một ngày
-		//		   Params: {""staffId"": ""Tên hoặc ID bác sĩ"", ""treatmentPlanId"": int, ""date"": ""YYYY-MM-DD""}
-   
-		//		3. getAvailableSlotsForService - ⭐ Lấy lịch trống của TẤT CẢ bác sĩ cho một DỊCH VỤ
-		//		   Params: {""serviceId"": ""Tên hoặc ID dịch vụ"", ""date"": ""YYYY-MM-DD"", ""treatmentPlanId"": int (optional)}
-   
-		//		4. getDoctorsForService - ⚠️ Lấy danh sách bác sĩ của một DỊCH VỤ (chỉ bác sĩ có appointments)
-		//		   Params: {""serviceId"": ""Tên hoặc ID dịch vụ""}
-   
-		//		5. getDoctorsForTreatmentPlan - ⭐⭐ Lấy DANH SÁCH TẤT CẢ bác sĩ của một LIỆU TRÌNH (tất cả bác sĩ, bất kể có appointments)
-		//		   Params: {""treatmentPlanId"": int - ID liệu trình""}
-   
-		//		6. bookAppointment - Đặt lịch khám
-		//		   Params: {""customerId"": int, ""staffId"": ""Tên hoặc ID bác sĩ"", ""serviceId"": ""Tên hoặc ID dịch vụ"", ""appointmentDate"": ""YYYY-MM-DD"", ""appointmentTime"": ""HH:mm""}
-   
-		//		7. cancelAppointment - Hủy lịch hẹn
-		//		   Params: {""customerId"": int, ""staffId"": ""Tên hoặc ID bác sĩ"", ""appointmentDate"": ""YYYY-MM-DD"" (optional), ""serviceId"": ""Tên hoặc ID dịch vụ"" (optional)}
-
-		//		CRITICAL DECISION RULE:
-				
-		//		📌 Khi query hỏi ""danh sách bác sĩ của liệu trình XXX"":
-		//		   → PHẢI DÙNG: getDoctorsForTreatmentPlan
-		//		   → TRẢ VỀ: DANH SÁCH TẤT CẢ bác sĩ (bất kể có appointments hay không)
-		//		   Ví dụ: 'Danh sách bác sĩ của liệu trình trẻ hóa da' → getDoctorsForTreatmentPlan
-				
-		//		📌 Khi query hỏi ""danh sách bác sĩ của dịch vụ YYY"":
-		//		   → PHẢI DÙNG: getDoctorsForService
-		//		   → TRẢ VỀ: CHỈ bác sĩ CÓ LẦN HẸN cho dịch vụ đó
-		//		   Ví dụ: 'Danh sách bác sĩ của dịch vụ trị nám' → getDoctorsForService
-
-		//		📌 Khi query có DỊCH VỤ nhưng KHÔNG chỉ định bác sĩ cụ thể:
-		//		   → PHẢI DÙNG: getAvailableSlotsForService (trả về lịch trống của MỌI bác sĩ cho dịch vụ đó)
-		//		   Ví dụ: 'Lịch trống cho liệu trình trẻ hóa da ngày 08-04-2026' → getAvailableSlotsForService
-				
-		//		📌 Khi query chỉ định BÁC SĨ CỤ THỂ (và CÓ LIỆU TRÌNH):
-		//		   → PHẢI DÙNG: getDoctorAvailableSlotsForTreatmentPlan
-		//		   Ví dụ: 'Lịch trống của bác sĩ Toan cho liệu trình trẻ hóa da' → getDoctorAvailableSlotsForTreatmentPlan
-				
-		//		📌 Khi query chỉ định BÁC SĨ CỤ THỂ (KHÔNG có liệu trình):
-		//		   → PHẢI DÙNG: getDoctorAvailableSlots
-		//		   Ví dụ: 'Lịch trống của bác sĩ Toan ngày 08-04-2026' → getDoctorAvailableSlots
-
-		//		CRITICAL RULES:
-		//		✅ LUÔN trả về JSON với định dạng CHÍNH XÁC:
-		//		{
-		//		  ""tool"": ""toolName"",
-		//		  ""params"": { 
-		//			...parameters...
-		//		  },
-		//		  ""reasoning"": ""Lý do chọn tool này""
-		//		}
-
-		//		✅ TRÍCH XUẤT TỲ QUERY:
-		//		- Tên bác sĩ ""Toan"" → Truyền như là ""Toan"" (không cần tìm ID)
-		//		- Tên dịch vụ ""Trị mụn"" → Truyền như là ""Trị mụn""
-		//		- Tên liệu trình ""trẻ hóa da"" → Truyền như là ""trẻ hóa da""
-		//		- Ngày ""08-04-2026"" → Đổi thành ""2026-04-08"" (YYYY-MM-DD)
-		//		- Ngày ""15/4"" → Đổi thành ""2026-04-15""
-
-		//		Current Date: " + DateTime.UtcNow.ToString("yyyy-MM-dd") + @"
-		//		Current Time: " + DateTime.UtcNow.ToString("HH:mm:ss");
-		//}
 
 		private List<LLMMessage> BuildConversationMessages(
 			string systemPrompt,

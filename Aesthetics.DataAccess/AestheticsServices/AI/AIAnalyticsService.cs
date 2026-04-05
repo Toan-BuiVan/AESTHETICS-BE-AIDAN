@@ -18,6 +18,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		private readonly ITreatmentPlanRepository _treatmentPlanRepository;
 		private readonly IInvoiceDetailsRepository _invoiceDetailsRepository;
 		private readonly ICartProductRepository _cartProductRepository;
+		private readonly IStaffRepository _staffRepository;
 
 		public AIAnalyticsService(
 			ILogger<AIAnalyticsService> logger,
@@ -26,7 +27,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			IProductRepository productRepository,
 			ITreatmentPlanRepository treatmentPlanRepository,
 			IInvoiceDetailsRepository invoiceDetailsRepository,
-			ICartProductRepository cartProductRepository)
+			ICartProductRepository cartProductRepository,
+			IStaffRepository staffRepository)
 		{
 			_logger = logger;
 			_serviceRepository = serviceRepository;
@@ -35,6 +37,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			_treatmentPlanRepository = treatmentPlanRepository;
 			_invoiceDetailsRepository = invoiceDetailsRepository;
 			_cartProductRepository = cartProductRepository;
+			_staffRepository = staffRepository;
 		}
 
 		/// <summary>Bài 4: Lấy dịch vụ nhiều người dùng nhất</summary>
@@ -147,6 +150,82 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "GET_BEST_DOCTOR_FOR_PLAN_ERROR: Exception occurred");
+				return new AIBestDoctorResponse
+				{
+					Success = false,
+					Message = $"Lỗi: {ex.Message}"
+				};
+			}
+		}
+
+		/// <summary>Lấy bác sĩ tốt nhất (nhiều lịch đặt nhất) của một dịch vụ</summary>
+		public async Task<AIBestDoctorResponse> GetBestDoctorForServiceAsync(int serviceId)
+		{
+			try
+			{
+				_logger.LogInformation("GET_BEST_DOCTOR_FOR_SERVICE: serviceId={ServiceId}", serviceId);
+
+				var response = new AIBestDoctorResponse();
+
+				// Kiểm tra dịch vụ
+				var service = await _serviceRepository.GetById(serviceId);
+				if (service == null || service.DeleteStatus)
+				{
+					response.Success = false;
+					response.Message = "Dịch vụ không tồn tại";
+					return response;
+				}
+
+				// Lấy tất cả lịch hẹn cho dịch vụ này
+				var appointments = await _appointmentRepository.FindByPredicate(x =>
+					x.ServiceId == serviceId &&
+					!x.DeleteStatus);
+
+				if (!appointments.Any())
+				{
+					response.Success = false;
+					response.Message = "Không tìm thấy bác sĩ nào cho dịch vụ này";
+					return response;
+				}
+
+				// Nhóm theo bác sĩ và tìm bác sĩ có nhiều lịch nhất
+				var doctorAppointments = appointments
+					.GroupBy(x => x.StaffId)
+					.Select(g => new { StaffId = g.Key, Count = g.Count() })
+					.OrderByDescending(x => x.Count)
+					.FirstOrDefault();
+
+				if (doctorAppointments == null || doctorAppointments.Count == 0)
+				{
+					response.Success = false;
+					response.Message = "Không tìm thấy bác sĩ nào cho dịch vụ này";
+					return response;
+				}
+
+				// Lấy thông tin chi tiết của bác sĩ
+				var staff = await _staffRepository.GetById(doctorAppointments.StaffId.Value);
+				if (staff == null || staff.DeleteStatus)
+				{
+					response.Success = false;
+					response.Message = "Thông tin bác sĩ không tồn tại";
+					return response;
+				}
+
+				response.StaffId = staff.Id;
+				response.StaffName = staff.FullName;
+				response.Specialization = staff.Specialization;
+				response.Degree = staff.Degree;
+				response.ExperienceYears = staff.ExperienceYears;
+				response.StaffImage = staff.StaffImage;
+				response.AppointmentCount = doctorAppointments.Count;
+				response.Success = true;
+				response.Message = $"Bác sĩ {staff.FullName} có {doctorAppointments.Count} lịch hẹn nhiều nhất cho dịch vụ {service.ServiceName}";
+
+				return response;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "GET_BEST_DOCTOR_FOR_SERVICE_ERROR: Exception occurred");
 				return new AIBestDoctorResponse
 				{
 					Success = false,
