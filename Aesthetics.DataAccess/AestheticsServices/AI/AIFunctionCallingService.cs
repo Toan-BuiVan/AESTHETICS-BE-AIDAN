@@ -1370,6 +1370,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				_logger.LogError(ex, "Error logging available treatment plans");
 			}
 		}
+
 		private async Task<AIExecuteToolResponse> ExecuteGetDoctorsForTreatmentPlan(Dictionary<string, object> @params)
 		{
 			try
