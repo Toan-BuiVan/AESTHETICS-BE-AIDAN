@@ -1,16 +1,18 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Data.AestheticsInterfaces.AI;
 using Aesthetics.Data.RepositoryInterfaces;
+using Aesthetics.Data.RepositoryServices;
 using Aesthetics.Entities.Entities;
+using Aesthetics.Entities.Enum;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.RequestModel.AI;
 using Aesthetics.Entities.Models.ResponseModel.AI;
 using Microsoft.Extensions.Logging;
+using Newtonsoft.Json;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Newtonsoft.Json;
 
 namespace Aesthetics.Data.AestheticsServices.AI
 {
@@ -24,6 +26,11 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		private readonly IStaffRepository _staffRepository;
 		private readonly IServiceRepository _serviceRepository;
 		private readonly ITreatmentPlanRepository _treatmentPlanRepository;
+		private readonly ITreatmentSessionRepository _treatmentSessionRepository;
+		private readonly IAppointmentRepositoty _appointmentRepository;
+		private readonly ICustomerTreatmentPlansRepository _customerTreatmentPlansRepository;
+		private readonly ICustomerTreatmentSessionsRepository _customerTreatmentSessionsRepository;
+		private readonly IAppointmentAssignmentRepository _appointmentAssignmentRepository;
 
 		public AIFunctionCallingService(
 			ILogger<AIFunctionCallingService> logger,
@@ -33,7 +40,12 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			ILLMService llmService,
 			IStaffRepository staffRepository,
 			IServiceRepository serviceRepository,
-			ITreatmentPlanRepository treatmentPlanRepository)  
+			ITreatmentPlanRepository treatmentPlanRepository,
+			ITreatmentSessionRepository treatmentSessionRepository,
+			IAppointmentRepositoty appointmentRepository,
+			ICustomerTreatmentPlansRepository customerTreatmentPlansRepository,
+			ICustomerTreatmentSessionsRepository customerTreatmentSessionsRepository,
+			IAppointmentAssignmentRepository appointmentAssignmentRepository)  
 		{
 			_logger = logger;
 			_aiAppointmentService = aiAppointmentService;
@@ -43,6 +55,11 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			_staffRepository = staffRepository;
 			_serviceRepository = serviceRepository;
 			_treatmentPlanRepository = treatmentPlanRepository;  
+			_treatmentSessionRepository = treatmentSessionRepository;
+			_appointmentRepository = appointmentRepository;
+			_customerTreatmentPlansRepository = customerTreatmentPlansRepository;
+			_customerTreatmentSessionsRepository = customerTreatmentSessionsRepository;
+			_appointmentAssignmentRepository = appointmentAssignmentRepository;
 		}
 
 		public async Task<AIToolsListResponse> GetAvailableToolsAsync()
@@ -403,6 +420,81 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			}
 		}
 
+		/// <summary>
+		/// Chuẩn hóa định dạng giờ từ nhiều format khác nhau
+		/// Hỗ trợ: "08:30", "8:30", "0830", "14", "14h", "2h chiều", "8h30 sáng", v.v.
+		/// </summary>
+		private string NormalizeTime(string timeStr)
+		{
+			if (string.IsNullOrWhiteSpace(timeStr))
+				return null;
+
+			timeStr = timeStr.Trim().ToLower();
+			_logger.LogInformation("📝 Normalizing time: {RawTime}", timeStr);
+
+			try
+			{
+				// Case 1: Đã đúng format HH:mm
+				if (timeStr.Contains(":"))
+				{
+					if (DateTime.TryParse($"2000-01-01 {timeStr}", out var result))
+					{
+						return result.ToString("HH:mm");
+					}
+				}
+
+				// Case 2: Format số không có dấu (0830, 830, 14, 8, v.v.)
+				if (int.TryParse(timeStr, out var timeInt))
+				{
+					int hour = timeInt / 100;
+					int minute = timeInt % 100;
+
+					if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60)
+					{
+						return $"{hour:D2}:{minute:D2}";
+					}
+				}
+
+				// Case 3: Format "8h30 sáng", "14h chiều", "3h sáng", v.v.
+				// Xử lý từ khóa "sáng", "trưa", "chiều", "tối"
+				string timeText = timeStr
+					.Replace("h", ":")
+					.Replace("sáng", "") // 8:30 sáng → 8:30 (không cần xử lý)
+					.Replace("trưa", "") // 12:00 trưa → 12:00
+					.Replace("chiều", "+12") // 3h chiều → 3+12:00 = 15:00
+					.Replace("tối", "+12") // 8h tối → 8+12:00 = 20:00
+					.Trim();
+
+				// Parse "3+12:00" → 15:00
+				if (timeText.Contains("+"))
+				{
+					var parts = timeText.Split('+');
+					if (int.TryParse(parts[0], out var baseHour) && int.TryParse(parts[1], out var offset))
+					{
+						int finalHour = baseHour + offset;
+						if (finalHour >= 0 && finalHour < 24)
+						{
+							return $"{finalHour:D2}:00";
+						}
+					}
+				}
+
+				// Thử parse như time bình thường
+				if (DateTime.TryParse($"2000-01-01 {timeText}", out var parsedTime))
+				{
+					return parsedTime.ToString("HH:mm");
+				}
+
+				_logger.LogWarning("❌ Could not normalize time: {TimeStr}", timeStr);
+				return null;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error normalizing time: {TimeStr}", timeStr);
+				return null;
+			}
+		}
+
 		// ===== EXECUTION METHODS =====
 		private async Task<AIExecuteToolResponse> ExecuteGetDoctorAvailableSlots(Dictionary<string, object> @params)
 		{
@@ -577,120 +669,158 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			}
 		}
 
-		/// <summary>
-		/// Chuẩn hóa định dạng giờ từ nhiều format khác nhau
-		/// Hỗ trợ: "08:30", "8:30", "0830", "14", "14h", "2h chiều", "8h30 sáng", v.v.
-		/// </summary>
-		private string NormalizeTime(string timeStr)
-		{
-			if (string.IsNullOrWhiteSpace(timeStr))
-				return null;
-
-			timeStr = timeStr.Trim().ToLower();
-			_logger.LogInformation("📝 Normalizing time: {RawTime}", timeStr);
-
-			try
-			{
-				// Case 1: Đã đúng format HH:mm
-				if (timeStr.Contains(":"))
-				{
-					if (DateTime.TryParse($"2000-01-01 {timeStr}", out var result))
-					{
-						return result.ToString("HH:mm");
-					}
-				}
-
-				// Case 2: Format số không có dấu (0830, 830, 14, 8, v.v.)
-				if (int.TryParse(timeStr, out var timeInt))
-				{
-					int hour = timeInt / 100;
-					int minute = timeInt % 100;
-
-					if (hour >= 0 && hour < 24 && minute >= 0 && minute < 60)
-					{
-						return $"{hour:D2}:{minute:D2}";
-					}
-				}
-
-				// Case 3: Format "8h30 sáng", "14h chiều", "3h sáng", v.v.
-				// Xử lý từ khóa "sáng", "trưa", "chiều", "tối"
-				string timeText = timeStr
-					.Replace("h", ":")
-					.Replace("sáng", "") // 8:30 sáng → 8:30 (không cần xử lý)
-					.Replace("trưa", "") // 12:00 trưa → 12:00
-					.Replace("chiều", "+12") // 3h chiều → 3+12:00 = 15:00
-					.Replace("tối", "+12") // 8h tối → 8+12:00 = 20:00
-					.Trim();
-
-				// Parse "3+12:00" → 15:00
-				if (timeText.Contains("+"))
-				{
-					var parts = timeText.Split('+');
-					if (int.TryParse(parts[0], out var baseHour) && int.TryParse(parts[1], out var offset))
-					{
-						int finalHour = baseHour + offset;
-						if (finalHour >= 0 && finalHour < 24)
-						{
-							return $"{finalHour:D2}:00";
-						}
-					}
-				}
-
-				// Thử parse như time bình thường
-				if (DateTime.TryParse($"2000-01-01 {timeText}", out var parsedTime))
-				{
-					return parsedTime.ToString("HH:mm");
-				}
-
-				_logger.LogWarning("❌ Could not normalize time: {TimeStr}", timeStr);
-				return null;
-			}
-			catch (Exception ex)
-			{
-				_logger.LogError(ex, "Error normalizing time: {TimeStr}", timeStr);
-				return null;
-			}
-		}
-
 		private async Task<AIExecuteToolResponse> ExecuteCancelAppointment(Dictionary<string, object> @params, int userId)
 		{
 			try
 			{
-				var customerId = Convert.ToInt32(@params["customerId"]);
-				var staffId = Convert.ToInt32(@params["staffId"]);
-				
+				_logger.LogInformation("=== EXECUTE CANCEL APPOINTMENT START ===");
+				_logger.LogInformation("Params: {@Params}", @params);
+
+				// ✅ STEP 1: Validate customerId
+				if (!@params.ContainsKey("customerId") || @params["customerId"] == null)
+				{
+					return CreateErrorResponse("customerId không được để trống");
+				}
+
+				if (!int.TryParse(@params["customerId"].ToString(), out var customerId))
+				{
+					return CreateErrorResponse("customerId phải là số");
+				}
+
+				// ✅ STEP 2: Validate & resolve staffId (có thể là tên bác sĩ hoặc ID)
+				if (!@params.ContainsKey("staffId") || @params["staffId"] == null)
+				{
+					return CreateErrorResponse("staffId không được để trống");
+				}
+
+				var staffIdValue = @params["staffId"].ToString();
+				int staffId;
+
+				if (int.TryParse(staffIdValue, out var parsedStaffId))
+				{
+					staffId = parsedStaffId;
+					_logger.LogInformation("✓ staffId is numeric: {StaffId}", staffId);
+				}
+				else
+				{
+					_logger.LogInformation("🔍 staffId is a name, looking up: {StaffName}", staffIdValue);
+					var foundStaffId = await FindStaffIdByNameAsync(staffIdValue);
+
+					if (!foundStaffId.HasValue)
+					{
+						_logger.LogError("❌ Could not find staff with name: {StaffName}", staffIdValue);
+						return CreateErrorResponse($"Không tìm thấy bác sĩ: {staffIdValue}");
+					}
+
+					staffId = foundStaffId.Value;
+					_logger.LogInformation("✓ Found staff: '{Name}' → ID: {StaffId}", staffIdValue, staffId);
+				}
+
+				// ✅ STEP 3: Parse appointmentDate (optional)
 				DateTime? appointmentDate = null;
 				if (@params.ContainsKey("appointmentDate") && @params["appointmentDate"] != null)
 				{
 					var dateStr = @params["appointmentDate"].ToString();
-					if (DateTime.TryParse(dateStr, out var date))
+					if (!DateTime.TryParse(dateStr, out var parsedDate))
 					{
-						appointmentDate = date;
+						return CreateErrorResponse($"Định dạng ngày không hợp lệ: {dateStr}. Vui lòng dùng YYYY-MM-DD");
 					}
+					appointmentDate = parsedDate;
+					_logger.LogInformation("✓ appointmentDate parsed: {Date}", appointmentDate?.ToString("dd-MM-yyyy"));
 				}
 
+				// ✅ STEP 4: Parse serviceId/serviceName (optional)
 				int? serviceId = null;
 				if (@params.ContainsKey("serviceId") && @params["serviceId"] != null)
 				{
-					serviceId = Convert.ToInt32(@params["serviceId"]);
+					var serviceIdValue = @params["serviceId"].ToString();
+
+					if (int.TryParse(serviceIdValue, out var parsedServiceId))
+					{
+						serviceId = parsedServiceId;
+						_logger.LogInformation("✓ serviceId is numeric: {ServiceId}", serviceId);
+					}
+					else
+					{
+						_logger.LogInformation("🔍 serviceId is a name, looking up: {ServiceName}", serviceIdValue);
+						var foundServiceId = await FindServiceIdByNameAsync(serviceIdValue);
+
+						if (!foundServiceId.HasValue)
+						{
+							_logger.LogWarning("⚠ Could not find service with name: {ServiceName}", serviceIdValue);
+						}
+						else
+						{
+							serviceId = foundServiceId.Value;
+							_logger.LogInformation("✓ Found service: '{Name}' → ID: {ServiceId}", serviceIdValue, serviceId);
+						}
+					}
 				}
 
-				var result = await _aiAppointmentService.CancelAppointmentAsync(customerId, staffId, appointmentDate, serviceId);
-				return new AIExecuteToolResponse
+				// ✅ STEP 5: Parse sessionNumber (optional - số buổi cụ thể)
+				int? sessionNumber = null;
+				if (@params.ContainsKey("sessionNumber") && @params["sessionNumber"] != null)
 				{
-					Success = result.Success,
-					Data = result,
-					Message = result.Message,
-					Error = result.Success ? null : result.Message
-				};
+					if (int.TryParse(@params["sessionNumber"].ToString(), out var parsedSessionNumber))
+					{
+						sessionNumber = parsedSessionNumber;
+						_logger.LogInformation("🔍 sessionNumber specified: Buổi thứ {SessionNumber}", sessionNumber);
+					}
+				}
+
+				// ✅ STEP 6: Phân tích case và gọi hàm xử lý phù hợp
+				_logger.LogInformation(
+					"[CASE ANALYSIS] CustomerId: {CustomerId}, StaffId: {StaffId}, Date: {Date}, ServiceId: {ServiceId}, SessionNumber: {SessionNumber}",
+					customerId, staffId, appointmentDate?.ToString("yyyy-MM-dd"), serviceId, sessionNumber);
+
+				AIExecuteToolResponse result;
+
+				// ✅ **CASE SPECIAL**: Hủy lịch hẹn buổi 2 gói trị liệu trẻ hóa da với bác sĩ Ha ngày 25-04-2026
+				if (sessionNumber.HasValue && serviceId.HasValue)
+				{
+					_logger.LogInformation("📍 CASE SPECIAL: Hủy buổi {SessionNumber} của dịch vụ {ServiceId} với bác sĩ {StaffId}",sessionNumber, serviceId, staffId);
+					result = await HandleCancelSpecificSessionAppointment(customerId, staffId, serviceId.Value, sessionNumber.Value,appointmentDate);
+				}
+				// Case 2: Hủy lịch hẹn với bác sĩ trong NGÀY CỤ THỂ: Cho tôi hủy lịch hẹn với bác sĩ Ha ngày 29-04-2026
+				else if (appointmentDate.HasValue && serviceId == null)
+				{
+					_logger.LogInformation("📍 CASE 2: Hủy lịch hẹn với bác sĩ {StaffId} vào ngày {Date}", staffId, appointmentDate?.ToString("yyyy-MM-dd"));
+					result = await HandleCancelAppointmentsByDate(customerId, staffId, appointmentDate.Value);
+				}
+				// Case 1: Hủy TẤT CẢ lịch hẹn với bác sĩ (không có ngày, không có dịch vụ)
+				else if (appointmentDate == null && serviceId == null)
+				{
+					_logger.LogInformation("📍 CASE 1: Hủy TẤT CẢ lịch hẹn với bác sĩ {StaffId}", staffId);
+					result = await HandleCancelAllAppointmentsWithDoctor(customerId, staffId);
+				}
+				// Case 3: Hủy lịch hẹn với bác sĩ cho DỊCH VỤ CỤ THỂ (có thể là dịch vụ đơn lẻ hoặc liệu trình)
+				else if (serviceId.HasValue && appointmentDate == null)
+				{
+					_logger.LogInformation("📍 CASE 3: Hủy lịch hẹn với bác sĩ {StaffId} cho dịch vụ {ServiceId}", staffId, serviceId);
+					result = await HandleCancelAppointmentsByService(customerId, staffId, serviceId.Value);
+				}
+				// Case 4: Hủy lịch hẹn với bác sĩ trong NGÀY CỤ THỂ cho DỊCH VỤ CỤ THỂ
+				else if (appointmentDate.HasValue && serviceId.HasValue)
+				{
+					_logger.LogInformation("📍 CASE 4: Hủy lịch hẹn với bác sĩ {StaffId} vào ngày {Date} cho dịch vụ {ServiceId}",
+						staffId, appointmentDate?.ToString("yyyy-MM-dd"), serviceId);
+					result = await HandleCancelAppointmentsByDateAndService(customerId, staffId, appointmentDate.Value, serviceId.Value);
+				}
+				else
+				{
+					result = CreateErrorResponse("Không thể xác định case hủy lịch hẹn");
+				}
+
+				_logger.LogInformation("=== EXECUTE CANCEL APPOINTMENT END - Success: {Success} ===", result.Success);
+				return result;
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "Error in ExecuteCancelAppointment");
-				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
+				_logger.LogError(ex, "❌ Error in ExecuteCancelAppointment");
+				return CreateErrorResponse($"Lỗi: {ex.Message}");
 			}
 		}
-
+		
 		private async Task<AIExecuteToolResponse> ExecuteGetMostPopularServices(Dictionary<string, object> @params)
 		{
 			try
@@ -874,57 +1004,83 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			}
 		}
 
-		// ===== VALIDATION METHODS =====
-		private bool ValidateDoctorSlotsParams(Dictionary<string, object> @params)
-			=> @params.ContainsKey("staffId") && @params.ContainsKey("date");
-
-		private bool ValidateDoctorTreatmentSlotsParams(Dictionary<string, object> @params)
-			=> @params.ContainsKey("staffId") && @params.ContainsKey("treatmentPlanId") && @params.ContainsKey("date");
-
-		private bool ValidateServiceParams(Dictionary<string, object> @params)
-			=> @params.ContainsKey("serviceId");
-
-		private bool ValidateBookingParams(Dictionary<string, object> @params)
-			=> @params.ContainsKey("customerId") &&
-			   @params.ContainsKey("staffId") &&
-			   @params.ContainsKey("serviceId") &&
-			   @params.ContainsKey("appointmentDate") &&
-			   @params.ContainsKey("appointmentTime");
-
-		private bool ValidateCancelParams(Dictionary<string, object> @params)
-			=> @params.ContainsKey("customerId") && @params.ContainsKey("staffId");
-
-		private bool ValidateTreatmentPlanParams(Dictionary<string, object> @params)
-			=> @params.ContainsKey("treatmentPlanId");
-
-		private bool ValidatePriceRangeParams(Dictionary<string, object> @params)
-			=> @params.ContainsKey("minPrice") && @params.ContainsKey("maxPrice");
-
-		private bool ValidateProductParams(Dictionary<string, object> @params)
-			=> @params.ContainsKey("productId");
-
-		private bool ValidateAddToCartParams(Dictionary<string, object> @params)
-			=> @params.ContainsKey("productId");
-
-		private bool ValidateKeywordParams(Dictionary<string, object> @params)
-			=> @params.ContainsKey("keyword") && !string.IsNullOrWhiteSpace(@params["keyword"].ToString());
-
-		private bool ValidateServiceNameParams(Dictionary<string, object> @params)
+		private async Task<AIExecuteToolResponse> ExecuteGetDoctorsForTreatmentPlan(Dictionary<string, object> @params)
 		{
-			if (@params == null || !@params.ContainsKey("serviceName"))
-				return false;
-
-			var serviceName = @params["serviceName"]?.ToString();
-			return !string.IsNullOrWhiteSpace(serviceName);
+			try
+			{
+				var treatmentPlanId = Convert.ToInt32(@params["treatmentPlanId"]);
+				var result = await _aiAppointmentService.GetDoctorsForTreatmentPlanAsync(treatmentPlanId);
+				return new AIExecuteToolResponse
+				{
+					Success = result.Success,
+					Data = result,
+					Message = result.Message,
+					Error = result.Success ? null : result.Message
+				};
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error in ExecuteGetDoctorsForTreatmentPlan");
+				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
+			}
 		}
 
-		private bool ValidateAvailableSlotsForServiceParams(Dictionary<string, object> @params)
+		private async Task<AIExecuteToolResponse> ExecuteGetRecommendedProductsByCategory(Dictionary<string, object> @params)
 		{
-			return @params.ContainsKey("serviceId") && 
-				   int.TryParse(@params["serviceId"].ToString(), out _) &&
-				   @params.ContainsKey("date") &&
-				   DateTime.TryParse(@params["date"].ToString(), out _);
+			try
+			{
+				if (!@params.ContainsKey("keyword") || string.IsNullOrWhiteSpace(@params["keyword"].ToString()))
+				{
+					return new AIExecuteToolResponse { Success = false, Error = "Keyword không được để trống" };
+				}
+
+				var keyword = @params["keyword"].ToString();
+				var result = await _aiAnalyticsService.GetRecommendedProductsByCategoryAsync(keyword);
+				return new AIExecuteToolResponse
+				{
+					Success = result.Success,
+					Data = result,
+					Message = result.Message,
+					Error = result.Success ? null : result.Message
+				};
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error in ExecuteGetRecommendedProductsByCategory");
+				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
+			}
 		}
+
+		private async Task<AIExecuteToolResponse> ExecuteGetTreatmentPackagesByServiceName(Dictionary<string, object> @params)
+		{
+			try
+			{
+				var serviceName = @params["serviceName"].ToString();
+				if (string.IsNullOrWhiteSpace(serviceName))
+				{
+					return new AIExecuteToolResponse
+					{
+						Success = false,
+						Error = "Tên dịch vụ không được để trống"
+					};
+				}
+
+				var result = await _aiAnalyticsService.GetTreatmentPackagesByServiceNameAsync(serviceName);
+				return new AIExecuteToolResponse
+				{
+					Success = result.Success,
+					Data = result,
+					Message = result.Message,
+					Error = result.Success ? null : result.Message
+				};
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error in ExecuteGetTreatmentPackagesByServiceName");
+				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
+			}
+		}
+
 
 		/// <summary>
 		/// 🔥 Main method: Xử lý query từ người dùng
@@ -988,6 +1144,14 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					"[STEP 6] Parsed tool - Tool: {Tool}, Params: {@Params}",
 					toolName,
 					toolParams);
+
+				// 🔥 AUTO-ENRICH: Thêm customerId từ userId nếu cần (cho tools appointment)
+				if ((toolName == "cancelAppointment") &&
+					!toolParams.ContainsKey("customerId"))
+				{
+					toolParams["customerId"] = request.UserId;
+					_logger.LogInformation("✅ [AUTO-ENRICH] Added customerId from userId: {CustomerId}", request.UserId);
+				}
 
 				// ✅ STEP 5: Validate params
 				bool isValidParams = await ValidateToolParamsAsync(toolName, toolParams);
@@ -1110,6 +1274,16 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				   - 'Chi tiết các buổi điều trị của dịch vụ trị nám' → getTreatmentPackagesByServiceName
 				   - 'Các gói liệu trình của trẻ hóa da' → getTreatmentPackagesByServiceName
 
+				Khi query hỏi ""hủy lịch hẹn buổi N"", ""hủy buổi N"":
+				   → PHẢI DÙNG: cancelAppointment
+				   → PHẢI TRÍCH XUẤT: sessionNumber từ ""buổi N""
+				   → Ví dụ:
+				   - 'Hủy lịch hẹn buổi 2' → ""sessionNumber"": 2
+				   - 'Hủy buổi 3 của trẻ hóa da' → ""sessionNumber"": 3
+				   - 'Hủy lịch buổi 1' → ""sessionNumber"": 1
+				   - 'Hủy lịch hẹn buổi 2 gói trẻ hóa da với bác sĩ Ha ngày 25-04-2026' → {""serviceId"": ""trẻ hóa da"", ""staffId"": ""Ha"", ""appointmentDate"": ""2026-04-25"", ""sessionNumber"": 2}
+
+
 				📌 Khi query hỏi ""danh sách bác sĩ"", ""tất cả bác sĩ"", ""các bác sĩ"":
 				   → PHẢI DÙNG: getDoctorsForService (trả về tất cả bác sĩ)
 				   → KHÔNG dùng: getBestDoctorForService
@@ -1165,6 +1339,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					- Giờ ""14h"" → Đổi thành ""14:00"" (HH:mm)
 					- Giờ ""3h chiều"" → Đổi thành ""15:00"" (HH:mm - chuyển 24h)
 					- Giờ ""8:30"" → Đổi thành ""08:30"" (HH:mm)
+					- Buổi ""buổi 2"" → Trích xuất số: 2 → ""sessionNumber"": 2
+					- Buổi ""buổi 3 của liệu trình"" → Trích xuất số: 3 → ""sessionNumber"": 3
 
 				✅ RESPONSE EXAMPLE:
 				📍 EXAMPLE 0 - User: 'Cho tôi lịch trống của bác sĩ Toan ngày 08-04-2026'
@@ -1275,14 +1451,26 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				  ""reasoning"": ""Người dùng muốn xem các gói điều trị và buổi chi tiết của liệu trình trẻ hóa da""
 				}
 
+				📍 EXAMPLE 9 - Hủy lịch buổi cụ thể:
+				User: 'Hủy lịch hẹn buổi 2 gói trị liệu trẻ hóa da với bác sĩ Ha ngày 25-04-2026'
+				Response:
+				{
+				  ""tool"": ""cancelAppointment"",
+				  ""params"": {
+					""customerId"": 1,
+					""staffId"": ""Ha"",
+					""serviceId"": ""trẻ hóa da"",
+					""appointmentDate"": ""2026-04-25"",
+					""sessionNumber"": 2
+				  },
+				  ""reasoning"": ""Người dùng muốn hủy lịch buổi 2 cụ thể của liệu trình trẻ hóa da vào ngày 25-04-2026 với bác sĩ Ha""
+				}
+
 				Current Date: " + DateTime.UtcNow.ToString("yyyy-MM-dd") + @"
 				Current Time: " + DateTime.UtcNow.ToString("HH:mm:ss");
 		}
 
-		private List<LLMMessage> BuildConversationMessages(
-			string systemPrompt,
-			string userQuery,
-			List<AIConversationMessage> history)
+		private List<LLMMessage> BuildConversationMessages(string systemPrompt, string userQuery, List<AIConversationMessage> history)
 		{
 			var messages = new List<LLMMessage>();
 
@@ -1619,12 +1807,127 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			}
 		}
 
-		private async Task<AIExecuteToolResponse> ExecuteGetDoctorsForTreatmentPlan(Dictionary<string, object> @params)
+		#region Validate
+
+		private bool ValidateDoctorSlotsParams(Dictionary<string, object> @params)
+			=> @params.ContainsKey("staffId") && @params.ContainsKey("date");
+
+		private bool ValidateDoctorTreatmentSlotsParams(Dictionary<string, object> @params)
+			=> @params.ContainsKey("staffId") && @params.ContainsKey("treatmentPlanId") && @params.ContainsKey("date");
+
+		private bool ValidateServiceParams(Dictionary<string, object> @params)
+			=> @params.ContainsKey("serviceId");
+
+		private bool ValidateBookingParams(Dictionary<string, object> @params)
+			=> @params.ContainsKey("customerId") &&
+			   @params.ContainsKey("staffId") &&
+			   @params.ContainsKey("serviceId") &&
+			   @params.ContainsKey("appointmentDate") &&
+			   @params.ContainsKey("appointmentTime");
+
+		private bool ValidateCancelParams(Dictionary<string, object> @params)
+		{
+			// Kiểm tra staffId có tồn tại (BẮT BUỘC)
+			if (!@params.ContainsKey("staffId") || @params["staffId"] == null)
+			{
+				_logger.LogWarning("ValidateCancelParams: Missing staffId");
+				return false;
+			}
+
+			// ✅ staffId có thể là số hoặc tên → chỉ kiểm tra không rỗng
+			var staffIdValue = @params["staffId"].ToString();
+			if (string.IsNullOrWhiteSpace(staffIdValue))
+			{
+				_logger.LogWarning("ValidateCancelParams: staffId is empty");
+				return false;
+			}
+
+			// ✅ customerId là OPTIONAL (có thể được thêm từ userId sau)
+			if (@params.ContainsKey("customerId") && @params["customerId"] != null)
+			{
+				if (!int.TryParse(@params["customerId"].ToString(), out _))
+				{
+					_logger.LogWarning("ValidateCancelParams: Invalid customerId format: {CustomerId}",
+						@params["customerId"]);
+					return false;
+				}
+			}
+
+			// ✅ Kiểm tra optional parameters
+			if (@params.ContainsKey("appointmentDate") && @params["appointmentDate"] != null)
+			{
+				var dateStr = @params["appointmentDate"].ToString();
+				if (!DateTime.TryParse(dateStr, out _))
+				{
+					_logger.LogWarning("ValidateCancelParams: Invalid appointmentDate format: {Date}", dateStr);
+					return false;
+				}
+			}
+
+			if (@params.ContainsKey("serviceId") && @params["serviceId"] != null)
+			{
+				var serviceIdValue = @params["serviceId"].ToString();
+				if (string.IsNullOrWhiteSpace(serviceIdValue))
+				{
+					_logger.LogWarning("ValidateCancelParams: serviceId is empty");
+					return false;
+				}
+			}
+
+			_logger.LogInformation("✓ ValidateCancelParams passed all checks");
+			return true;
+		}
+
+		private bool ValidateTreatmentPlanParams(Dictionary<string, object> @params)
+			=> @params.ContainsKey("treatmentPlanId");
+
+		private bool ValidatePriceRangeParams(Dictionary<string, object> @params)
+			=> @params.ContainsKey("minPrice") && @params.ContainsKey("maxPrice");
+
+		private bool ValidateProductParams(Dictionary<string, object> @params)
+			=> @params.ContainsKey("productId");
+
+		private bool ValidateAddToCartParams(Dictionary<string, object> @params)
+			=> @params.ContainsKey("productId");
+
+		private bool ValidateKeywordParams(Dictionary<string, object> @params)
+			=> @params.ContainsKey("keyword") && !string.IsNullOrWhiteSpace(@params["keyword"].ToString());
+
+		private bool ValidateServiceNameParams(Dictionary<string, object> @params)
+		{
+			if (@params == null || !@params.ContainsKey("serviceName"))
+				return false;
+
+			var serviceName = @params["serviceName"]?.ToString();
+			return !string.IsNullOrWhiteSpace(serviceName);
+		}
+
+		private bool ValidateAvailableSlotsForServiceParams(Dictionary<string, object> @params)
+		{
+			return @params.ContainsKey("serviceId") &&
+				   int.TryParse(@params["serviceId"].ToString(), out _) &&
+				   @params.ContainsKey("date") &&
+				   DateTime.TryParse(@params["date"].ToString(), out _);
+		}
+
+		#endregion
+
+		#region Funciton private cancel appointment
+
+		/// <summary>
+		/// CASE 1: Hủy TẤT CẢ lịch hẹn của khách hàng với bác sĩ
+		/// Query: "Hủy hẹn với bác sĩ A"
+		/// </summary>
+		/// 
+		private async Task<AIExecuteToolResponse> HandleCancelAllAppointmentsWithDoctor(int customerId, int staffId)
 		{
 			try
 			{
-				var treatmentPlanId = Convert.ToInt32(@params["treatmentPlanId"]);
-				var result = await _aiAppointmentService.GetDoctorsForTreatmentPlanAsync(treatmentPlanId);
+				_logger.LogInformation("🔍 CASE 1: Fetching all appointments - CustomerId: {CustomerId}, StaffId: {StaffId}",
+					customerId, staffId);
+
+				var result = await _aiAppointmentService.CancelAppointmentAsync(customerId, staffId, null, null);
+
 				return new AIExecuteToolResponse
 				{
 					Success = result.Success,
@@ -1635,65 +1938,519 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "Error in ExecuteGetDoctorsForTreatmentPlan");
-				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
+				_logger.LogError(ex, "❌ Error in HandleCancelAllAppointmentsWithDoctor");
+				return CreateErrorResponse(ex.Message);
 			}
 		}
 
-		private async Task<AIExecuteToolResponse> ExecuteGetRecommendedProductsByCategory(Dictionary<string, object> @params)
+		/// <summary>
+		/// CASE 2: Hủy lịch hẹn của khách hàng với bác sĩ vào NGÀY CỤ THỂ (tất cả dịch vụ)
+		/// Query: "Hủy lịch hẹn với bác sĩ A ngày B"
+		/// </summary>
+		private async Task<AIExecuteToolResponse> HandleCancelAppointmentsByDate(int customerId, int staffId, DateTime appointmentDate)
 		{
 			try
 			{
-				if (!@params.ContainsKey("keyword") || string.IsNullOrWhiteSpace(@params["keyword"].ToString()))
+				_logger.LogInformation(
+					"🔍 CASE 2: Fetching appointments by date - CustomerId: {CustomerId}, StaffId: {StaffId}, Date: {Date}",
+					customerId, staffId, appointmentDate.ToString("yyyy-MM-dd"));
+
+				var result = await _aiAppointmentService.CancelAppointmentAsync(
+					customerId,
+					staffId,
+					appointmentDate,
+					null);
+
+				return new AIExecuteToolResponse
 				{
-					return new AIExecuteToolResponse { Success = false, Error = "Keyword không được để trống" };
+					Success = result.Success,
+					Data = result,
+					Message = result.Message,
+					Error = result.Success ? null : result.Message
+				};
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "❌ Error in HandleCancelAppointmentsByDate");
+				return CreateErrorResponse(ex.Message);
+			}
+		}
+
+		/// <summary>
+		/// CASE 3: Hủy lịch hẹn của khách hàng với bác sĩ cho DỊCH VỤ CỤ THỂ
+		/// Xử lý 2 sub-case:
+		/// 3a. Nếu C là DỊCH VỤ ĐƠN LẺ → Hủy tất cả lịch hẹn của dịch vụ đó
+		/// 3b. Nếu C là GÓI LIỆU TRÌNH → Hủy tất cả lịch hẹn của tất cả buổi trong liệu trình
+		/// Query: "Hủy lịch hẹn với bác sĩ A dịch vụ C"
+		/// </summary>
+		private async Task<AIExecuteToolResponse> HandleCancelAppointmentsByService(int customerId, int staffId, int serviceId)
+		{
+			try
+			{
+				_logger.LogInformation(
+					"🔍 CASE 3: Checking if service is course (treatment plan) - ServiceId: {ServiceId}",
+					serviceId);
+
+				// Kiểm tra xem dịch vụ có phải liệu trình hay không
+				var service = await _serviceRepository.GetById(serviceId);
+				if (service == null)
+				{
+					return CreateErrorResponse($"Không tìm thấy dịch vụ ID {serviceId}");
 				}
 
-				var keyword = @params["keyword"].ToString();
-				var result = await _aiAnalyticsService.GetRecommendedProductsByCategoryAsync(keyword);
-				return new AIExecuteToolResponse
-				{
-					Success = result.Success,
-					Data = result,
-					Message = result.Message,
-					Error = result.Success ? null : result.Message
-				};
-			}
-			catch (Exception ex)
-			{
-				_logger.LogError(ex, "Error in ExecuteGetRecommendedProductsByCategory");
-				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
-			}
-		}
+				_logger.LogInformation("✓ Service found: {ServiceName}, IsCourse: {IsCourse}",
+					service.ServiceName, service.IsCourse);
 
-		private async Task<AIExecuteToolResponse> ExecuteGetTreatmentPackagesByServiceName(Dictionary<string, object> @params)
-		{
-			try
-			{
-				var serviceName = @params["serviceName"].ToString();
-				if (string.IsNullOrWhiteSpace(serviceName))
+				// CASE 3a: Dịch vụ đơn lẻ → Hủy tất cả lịch hẹn của dịch vụ đó
+				if (service.IsCourse != true)
 				{
+					_logger.LogInformation("📍 CASE 3a: Service is NOT a course (single service) → Hủy tất cả lịch hẹn của dịch vụ {ServiceId}",
+						serviceId);
+
+					var result = await _aiAppointmentService.CancelAppointmentAsync(
+						customerId,
+						staffId,
+						null,
+						serviceId);
+
 					return new AIExecuteToolResponse
 					{
-						Success = false,
-						Error = "Tên dịch vụ không được để trống"
+						Success = result.Success,
+						Data = result,
+						Message = result.Message,
+						Error = result.Success ? null : result.Message
 					};
 				}
 
-				var result = await _aiAnalyticsService.GetTreatmentPackagesByServiceNameAsync(serviceName);
+				// CASE 3b: Gói liệu trình → Hủy tất cả buổi đã đặt lịch của liệu trình này
+				_logger.LogInformation("📍 CASE 3b: Service IS a course (treatment plan) → Hủy tất cả buổi của liệu trình {ServiceId}",
+					serviceId);
+
+				return await HandleCancelTreatmentPlanAppointments(customerId, staffId, serviceId, null);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "❌ Error in HandleCancelAppointmentsByService");
+				return CreateErrorResponse(ex.Message);
+			}
+		}
+
+		/// <summary>
+		/// CASE 4: Hủy lịch hẹn của khách hàng với bác sĩ vào NGÀY CỤ THỀ cho DỊCH VỤ CỤ THỂ
+		/// Xử lý 2 sub-case:
+		/// 4a. Nếu C là DỊCH VỤ ĐƠN LẺ → Hủy lịch hẹn của dịch vụ đó vào ngày cụ thể
+		/// 4b. Nếu C là GÓI LIỆU TRÌNH → Hủy tất cả lịch hẹn buổi của liệu trình vào ngày cụ thể
+		/// Query: "Hủy lịch hẹn với bác sĩ A ngày B dịch vụ C"
+		/// </summary>
+		private async Task<AIExecuteToolResponse> HandleCancelAppointmentsByDateAndService(int customerId, int staffId, DateTime appointmentDate, int serviceId)
+		{
+			try
+			{
+				_logger.LogInformation(
+					"🔍 CASE 4: Checking if service is course - ServiceId: {ServiceId}",
+					serviceId);
+
+				// Kiểm tra xem dịch vụ có phải liệu trình hay không
+				var service = await _serviceRepository.GetById(serviceId);
+				if (service == null)
+				{
+					return CreateErrorResponse($"Không tìm thấy dịch vụ ID {serviceId}");
+				}
+
+				_logger.LogInformation("✓ Service found: {ServiceName}, IsCourse: {IsCourse}",
+					service.ServiceName, service.IsCourse);
+
+				// CASE 4a: Dịch vụ đơn lẻ → Hủy lịch hẹn của dịch vụ đó vào ngày cụ thể
+				if (service.IsCourse != true)
+				{
+					_logger.LogInformation(
+						"📍 CASE 4a: Service is NOT a course → Hủy lịch hẹn ngày {Date} dịch vụ {ServiceId}",
+						appointmentDate.ToString("yyyy-MM-dd"), serviceId);
+
+					var result = await _aiAppointmentService.CancelAppointmentAsync(
+						customerId,
+						staffId,
+						appointmentDate,
+						serviceId);
+
+					return new AIExecuteToolResponse
+					{
+						Success = result.Success,
+						Data = result,
+						Message = result.Message,
+						Error = result.Success ? null : result.Message
+					};
+				}
+
+				// CASE 4b: Gói liệu trình → Hủy tất cả buổi của liệu trình vào ngày cụ thể
+				_logger.LogInformation(
+					"📍 CASE 4b: Service IS a course → Hủy buổi liệu trình ngày {Date}",
+					appointmentDate.ToString("yyyy-MM-dd"));
+
+				return await HandleCancelTreatmentPlanAppointments(customerId, staffId, serviceId, appointmentDate);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "❌ Error in HandleCancelAppointmentsByDateAndService");
+				return CreateErrorResponse(ex.Message);
+			}
+		}
+
+		/// <summary>
+		/// Hủy tất cả lịch hẹn buổi của liệu trình
+		/// Nếu có appointmentDate → chỉ hủy buổi vào ngày đó
+		/// Nếu không có appointmentDate → hủy tất cả buổi
+		/// </summary>
+		private async Task<AIExecuteToolResponse> HandleCancelTreatmentPlanAppointments(int customerId, int staffId, int serviceId, DateTime? appointmentDate)
+		{
+			try
+			{
+				_logger.LogInformation(
+					"🔍 Looking up treatment plans for service {ServiceId}",
+					serviceId);
+
+				// Lấy tất cả treatment plans của service
+				var treatmentPlans = await _treatmentPlanRepository.FindByPredicate(x =>
+					x.ServiceId == serviceId && !x.DeleteStatus);
+
+				if (!treatmentPlans.Any())
+				{
+					_logger.LogWarning("⚠ No treatment plans found for service {ServiceId}", serviceId);
+					return CreateErrorResponse($"Không tìm thấy liệu trình nào cho dịch vụ ID {serviceId}");
+				}
+
+				_logger.LogInformation("✓ Found {Count} treatment plans", treatmentPlans.Count());
+
+				int totalCancelledCount = 0;
+				var cancelledDetails = new List<string>();
+
+				// Hủy lịch hẹn cho mỗi treatment plan
+				foreach (var plan in treatmentPlans)
+				{
+					_logger.LogInformation("🔍 Processing treatment plan: {PlanName} (ID: {PlanId})",
+						plan.PlanName, plan.Id);
+
+					// Gọi CancelAppointmentAsync với serviceId
+					// Nếu có appointmentDate → chỉ hủy lịch hẹn vào ngày đó
+					var result = await _aiAppointmentService.CancelAppointmentAsync(
+						customerId,
+						staffId,
+						appointmentDate,
+						serviceId);
+
+					if (result.Success)
+					{
+						totalCancelledCount += result.CancelledCount;
+						cancelledDetails.Add($"{plan.PlanName}: {result.CancelledCount} buổi");
+						_logger.LogInformation("✓ Cancelled {Count} appointments for plan {PlanName}",
+							result.CancelledCount, plan.PlanName);
+					}
+					else
+					{
+						_logger.LogWarning("⚠ Failed to cancel appointments for plan {PlanName}: {Message}",
+							plan.PlanName, result.Message);
+					}
+				}
+
+				if (totalCancelledCount == 0)
+				{
+					return CreateErrorResponse("Không tìm thấy lịch hẹn nào để hủy cho liệu trình này");
+				}
+
+				var finalMessage = $"✅ Đã hủy {totalCancelledCount} buổi liệu trình:\n" +
+					string.Join("\n", cancelledDetails.Select(d => $"  • {d}"));
+
 				return new AIExecuteToolResponse
 				{
-					Success = result.Success,
-					Data = result,
-					Message = result.Message,
-					Error = result.Success ? null : result.Message
+					Success = true,
+					Data = new { CancelledCount = totalCancelledCount, Details = cancelledDetails },
+					Message = finalMessage,
+					Error = null
 				};
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "Error in ExecuteGetTreatmentPackagesByServiceName");
-				return new AIExecuteToolResponse { Success = false, Error = ex.Message };
+				_logger.LogError(ex, "❌ Error in HandleCancelTreatmentPlanAppointments");
+				return CreateErrorResponse(ex.Message);
 			}
 		}
+
+		/// <summary>
+		/// Helper method để tạo error response
+		/// </summary>
+		private AIExecuteToolResponse CreateErrorResponse(string error)
+		{
+			_logger.LogError("❌ Error: {Error}", error);
+			return new AIExecuteToolResponse
+			{
+				Success = false,
+				Error = error,
+				Message = error
+			};
+		}
+
+		/// <summary>
+		/// CASE SPECIAL: Hủy buổi cụ thể (buổi N) của liệu trình
+		/// Query: "Hủy lịch hẹn buổi 2 gói trẻ hóa da với bác sĩ A ngày B"
+		/// 
+		/// Luồng xử lý:
+		/// 1. Lấy TreatmentPlans của serviceId
+		/// 2. Lấy TreatmentSessions của TreatmentPlan → tìm SessionNumber = 2
+		/// 3. Lấy CustomerTreatmentSessions tương ứng
+		/// 4. Hủy Appointment dựa trên CustomerTreatmentSession
+		/// </summary>
+		private async Task<AIExecuteToolResponse> HandleCancelSpecificSessionAppointment(int customerId, int staffId, int serviceId, int sessionNumber, DateTime? appointmentDate)
+		{
+			try
+			{
+				_logger.LogInformation(
+					"🔍 CASE SPECIAL: Starting cancel specific session - Service: {ServiceId}, Session: {SessionNumber}, Date: {Date}",
+					serviceId, sessionNumber, appointmentDate?.ToString("yyyy-MM-dd"));
+
+				// ✅ STEP 1: Lấy TreatmentPlans của service
+				var treatmentPlans = await _treatmentPlanRepository.FindByPredicate(x =>
+					x.ServiceId == serviceId && !x.DeleteStatus);
+
+				if (!treatmentPlans.Any())
+				{
+					return CreateErrorResponse($"Không tìm thấy liệu trình nào cho dịch vụ ID {serviceId}");
+				}
+
+				_logger.LogInformation("✓ Found {Count} treatment plans for service {ServiceId}",
+					treatmentPlans.Count(), serviceId);
+
+				int totalCancelledCount = 0;
+				int totalAssignmentCount = 0; // 🆕 Đếm assignment bị hủy
+				var cancelledDetails = new List<string>();
+
+				// ✅ STEP 2: Xử lý từng treatment plan
+				foreach (var treatmentPlan in treatmentPlans)
+				{
+					_logger.LogInformation(
+						"🔍 Processing treatment plan: {PlanName} (ID: {PlanId})",
+						treatmentPlan.PlanName, treatmentPlan.Id);
+
+					// ✅ STEP 2a: Lấy TreatmentSessions của treatment plan
+					var treatmentSessions = await _treatmentSessionRepository.FindByPredicate(x =>
+						x.TreatmentPlanId == treatmentPlan.Id && !x.DeleteStatus);
+
+					_logger.LogInformation("✓ Found {Count} treatment sessions in plan", treatmentSessions.Count());
+
+					// ✅ STEP 2b: Tìm TreatmentSession có SessionNumber = sessionNumber
+					var targetSession = treatmentSessions.FirstOrDefault(x => x.SessionNumber == sessionNumber);
+					if (targetSession == null)
+					{
+						_logger.LogWarning(
+							"⚠ Session #{SessionNumber} not found in plan {PlanName}",
+							sessionNumber, treatmentPlan.PlanName);
+						continue;
+					}
+
+					_logger.LogInformation(
+						"✓ Found target session: {SessionName} (SessionNumber: {Number}, ID: {SessionId})",
+						targetSession.SessionName, sessionNumber, targetSession.Id);
+
+					// ✅ STEP 2c: Lấy CustomerTreatmentPlan của khách hàng cho liệu trình này
+					var customerTreatmentPlan = await _customerTreatmentPlansRepository.FindByPredicate(x =>
+						x.CustomerId == customerId &&
+						x.TreatmentPlanId == treatmentPlan.Id &&
+						!x.DeleteStatus);
+
+					if (!customerTreatmentPlan.Any())
+					{
+						_logger.LogWarning(
+							"⚠ No CustomerTreatmentPlan found for customer {CustomerId}, plan {PlanId}",
+							customerId, treatmentPlan.Id);
+						continue;
+					}
+
+					_logger.LogInformation(
+						"✓ Found {Count} CustomerTreatmentPlan(s)",
+						customerTreatmentPlan.Count());
+
+					// ✅ STEP 2d: Lấy CustomerTreatmentSession tương ứng
+					foreach (var custPlan in customerTreatmentPlan)
+					{
+						var customerTreatmentSessions = await _customerTreatmentSessionsRepository.FindByPredicate(x =>
+							x.CustomerTreatmentPlanId == custPlan.Id &&
+							x.TreatmentSessionId == targetSession.Id &&
+							!x.DeleteStatus);
+
+						if (!customerTreatmentSessions.Any())
+						{
+							_logger.LogWarning(
+								"⚠ No CustomerTreatmentSession found for session {SessionId}",
+								targetSession.Id);
+							continue;
+						}
+
+						_logger.LogInformation(
+							"✓ Found {Count} CustomerTreatmentSession(s) to cancel",
+							customerTreatmentSessions.Count());
+
+						// ✅ STEP 2e: Hủy Appointments dựa trên CustomerTreatmentSession
+						foreach (var custSession in customerTreatmentSessions)
+						{
+							// Tìm Appointments liên kết với CustomerTreatmentSession này
+							var appointments = await _appointmentRepository.FindByPredicate(x =>
+								x.CustomerId == customerId &&
+								x.StaffId == staffId &&
+								x.CustomerTreatmentSessionId == custSession.Id &&
+								x.Status != (int)AppointmentStatus.Cancelled &&
+								!x.DeleteStatus);
+
+							// Lọc theo ngày nếu có
+							if (appointmentDate.HasValue)
+							{
+								appointments = appointments
+									.Where(x => x.StartTime!.Value.Date == appointmentDate.Value.Date)
+									.ToList();
+							}
+
+							_logger.LogInformation(
+								"🔍 Found {Count} appointments to cancel for session {SessionNumber}",
+								appointments.Count(), sessionNumber);
+
+							// Hủy từng appointment + assignment
+							foreach (var apt in appointments)
+							{
+								try
+								{
+									_logger.LogInformation("📅 Cancelling appointment ID={Id}, Time={Time}", apt.Id, apt.StartTime);
+
+									// ✅ STEP 3.1: Update status của AppointmentAssignments (KHÔNG XÓA)
+									var assignments = await _appointmentAssignmentRepository.FindByPredicate(x =>
+										x.AppointmentId == apt.Id && !x.DeleteStatus);
+
+									if (assignments.Any())
+									{
+										_logger.LogInformation("🔗 Found {Count} AppointmentAssignment(s) to cancel", assignments.Count());
+
+										foreach (var assignment in assignments)
+										{
+											try
+											{
+												// 🆕 Chỉ update status, KHÔNG xóa
+												assignment.Status = (int)AppointmentStatus.Cancelled;
+												// assignment.DeleteStatus = true; ❌ KHÔNG set DeleteStatus
+
+												var assignmentUpdated = await _appointmentAssignmentRepository.UpdateEntity(assignment);
+												if (assignmentUpdated)
+												{
+													totalAssignmentCount++;
+													_logger.LogInformation("✓ AppointmentAssignment status updated: ID={Id}, Status=Cancelled", assignment.Id);
+												}
+												else
+												{
+													_logger.LogWarning("⚠ Failed to update AppointmentAssignment status: ID={Id}", assignment.Id);
+												}
+											}
+											catch (Exception ex)
+											{
+												_logger.LogError(ex, "❌ Error updating AppointmentAssignment: ID={Id}", assignment.Id);
+											}
+										}
+									}
+									else
+									{
+										_logger.LogInformation("ℹ No AppointmentAssignments found for appointment {AppointmentId}", apt.Id);
+									}
+
+									// ✅ STEP 3.2: Hủy Appointment
+									apt.Status = (int)AppointmentStatus.Cancelled;
+									// apt.DeleteStatus = true; ❌ KHÔNG set DeleteStatus để giữ audit trail
+
+									var updated = await _appointmentRepository.UpdateEntity(apt);
+									if (updated)
+									{
+										totalCancelledCount++;
+										cancelledDetails.Add(
+											$"Buổi {sessionNumber}: {apt.StartTime:dd/MM/yyyy HH:mm}");
+										_logger.LogInformation(
+											"✓ Appointment cancelled: ID={Id}, Time={Time}",
+											apt.Id, apt.StartTime);
+									}
+									else
+									{
+										_logger.LogWarning("⚠ Failed to cancel Appointment: ID={Id}", apt.Id);
+									}
+								}
+								catch (Exception ex)
+								{
+									_logger.LogError(ex, "❌ Error in appointment cancellation flow: ID={Id}", apt.Id);
+								}
+							}
+
+							// 🆕 STEP 3.3: Update CustomerTreatmentSession status thành "KhachHuy"
+							try
+							{
+								custSession.Status = "KhachHuy";
+								var sessionUpdated = await _customerTreatmentSessionsRepository.UpdateEntity(custSession);
+								if (sessionUpdated)
+								{
+									_logger.LogInformation("✓ CustomerTreatmentSession status updated: ID={Id}, Status=KhachHuy", custSession.Id);
+
+									// 🆕 STEP 3.4: Check và update CustomerTreatmentPlan status nếu cần
+									if (custPlan.Id > 0)
+									{
+										var allSessions = await _customerTreatmentSessionsRepository.FindByPredicate(x =>
+											x.CustomerTreatmentPlanId == custPlan.Id &&
+											!x.DeleteStatus);
+
+										// Nếu TẤT CẢ sessions = "KhachHuy" → Plan = "KhachHuy"
+										if (allSessions.All(s => s.Status == "KhachHuy"))
+										{
+											custPlan.Status = "KhachHuy";
+											var planUpdated = await _customerTreatmentPlansRepository.UpdateEntity(custPlan);
+											if (planUpdated)
+											{
+												_logger.LogInformation("✓ CustomerTreatmentPlan status updated to KhachHuy: ID={Id}", custPlan.Id);
+											}
+										}
+										else
+										{
+											_logger.LogInformation("ℹ Plan has other active sessions, status not changed: ID={Id}", custPlan.Id);
+										}
+									}
+								}
+								else
+								{
+									_logger.LogWarning("⚠ Failed to update CustomerTreatmentSession status: ID={Id}", custSession.Id);
+								}
+							}
+							catch (Exception ex)
+							{
+								_logger.LogError(ex, "❌ Error updating session/plan status: ID={Id}", custSession.Id);
+							}
+						}
+					}
+				}
+
+				if (totalCancelledCount == 0)
+				{
+					return CreateErrorResponse(
+						$"Không tìm thấy lịch hẹn nào để hủy cho buổi {sessionNumber}");
+				}
+
+				var finalMessage = $"✅ Đã hủy {totalCancelledCount} lịch hẹn buổi {sessionNumber}" +
+					(totalAssignmentCount > 0 ? $" | Cập nhật {totalAssignmentCount} assignment(s)" : "") +
+					":\n" + string.Join("\n", cancelledDetails.Select(d => $"  • {d}"));
+
+				return new AIExecuteToolResponse
+				{
+					Success = true,
+					Data = new { CancelledCount = totalCancelledCount, AssignmentCount = totalAssignmentCount, Details = cancelledDetails },
+					Message = finalMessage,
+					Error = null
+				};
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "❌ Error in HandleCancelSpecificSessionAppointment");
+				return CreateErrorResponse(ex.Message);
+			}
+		}
+
+		#endregion
 	}
 }

@@ -56,11 +56,10 @@ namespace Aesthetics.Entities.Models.RequestModel
 	public class GetDoctorAvailabilityRequest
 	{
 		public int DoctorId { get; set; }
-
 		public int? CustomerTreatmentSessionId { get; set; }
-
 		public int? CustomerTreatmentPlanId { get; set; }
 		public int? SessionNumber { get; set; }
+		public int? ServiceId { get; set; }
 		public DateTime Date { get; set; }
 
 	}
@@ -68,6 +67,8 @@ namespace Aesthetics.Entities.Models.RequestModel
 	public class updateappoint
 	{
 		public int? CustomerTreatmentSessionId { get; set; }
+		public int? serviceId { get; set; }
+		public int? customerId { get; set; }
 		/*
 		 2 => "In Progress",
 		 3 => "Completed",

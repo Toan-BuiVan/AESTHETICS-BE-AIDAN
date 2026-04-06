@@ -21,6 +21,9 @@ namespace Aesthetics.Entities.Models.ResponseModel
 		/// <summary>Thông tin buổi điều trị</summary>
 		public TreatmentSessionInfo? TreatmentSession { get; set; }
 
+		/// <summary>🆕 Thông tin session điều trị của khách hàng</summary>
+		public CustomerTreatmentSessionInfo? CustomerTreatmentSession { get; set; }
+
 		/// <summary>Thời gian bắt đầu</summary>
 		public DateTime? StartTime { get; set; }
 
@@ -97,6 +100,47 @@ namespace Aesthetics.Entities.Models.ResponseModel
 
 		/// <summary>Số năm kinh nghiệm</summary>
 		public int? YearsOfExperience { get; set; }
+	}
+
+	/// <summary>🆕 Thông tin session điều trị của khách hàng</summary>
+	public class CustomerTreatmentSessionInfo
+	{
+		/// <summary>ID session điều trị của khách hàng</summary>
+		public int Id { get; set; }
+
+		/// <summary>ID liệu trình khách hàng</summary>
+		public int? CustomerTreatmentPlanId { get; set; }
+
+		/// <summary>ID buổi điều trị</summary>
+		public int? TreatmentSessionId { get; set; }
+
+		/// <summary>Trạng thái session (DaDatLich, DangThucHien, HoanThanh, KhachHuy)</summary>
+		public string? Status { get; set; }
+
+		/// <summary>Thông tin liệu trình khách hàng liên quan</summary>
+		public CustomerTreatmentPlanInfo? CustomerTreatmentPlan { get; set; }
+	}
+
+	/// <summary>🆕 Thông tin liệu trình khách hàng</summary>
+	public class CustomerTreatmentPlanInfo
+	{
+		/// <summary>ID liệu trình khách hàng</summary>
+		public int Id { get; set; }
+
+		/// <summary>ID khách hàng</summary>
+		public int? CustomerId { get; set; }
+
+		/// <summary>ID liệu trình (template)</summary>
+		public int? TreatmentPlanId { get; set; }
+
+		/// <summary>Tên liệu trình</summary>
+		public string? TreatmentPlanName { get; set; }
+
+		/// <summary>Trạng thái liệu trình (ChoDatLich, DangThucHien, HoanThanh, KhachHuy)</summary>
+		public string? Status { get; set; }
+
+		/// <summary>Số buổi trong liệu trình</summary>
+		public int? TotalSessions { get; set; }
 	}
 
 	/// <summary>Thông tin dịch vụ</summary>

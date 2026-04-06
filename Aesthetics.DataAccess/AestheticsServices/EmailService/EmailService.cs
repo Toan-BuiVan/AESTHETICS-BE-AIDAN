@@ -219,98 +219,93 @@ namespace Aesthetics.Data.AestheticsServices.EmailService
 		private string CreateCancellationEmailBody(string customerName, string serviceName, DateTime appointmentTime, string staffName)
 		{
 			return $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-</head>
-<body style='margin: 0; padding: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); font-family: -apple-system, BlinkMacSystemFont, ""Segoe UI"", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; font-size: 14px; color: #333;'>
-    <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
-        <!-- Header -->
-        <div style='background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); padding: 40px 30px; border-radius: 12px 12px 0 0; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
-            <h1 style='color: #fff; margin: 0; font-size: 28px; font-weight: 600;'>Aesthetics Premium Care</h1>
-            <p style='color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 13px; letter-spacing: 0.5px;'>HỆ THỐNG QUẢN LÝ LỊCH HẸN</p>
-        </div>
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset='UTF-8'>
+                        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                    </head>
+                    <body style='margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, ""Segoe UI"", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; font-size: 14px; line-height: 1.5; color: #333;'>
+                        <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                            <!-- Header -->
+                            <div style='background-color: #1a1a1a; padding: 30px; color: white; text-align: center; margin-bottom: 20px;'>
+                                <h1 style='margin: 0; font-size: 24px; font-weight: 600; letter-spacing: 0.5px;'>AESTHETICS PREMIUM CARE</h1>
+                                <p style='margin: 8px 0 0 0; font-size: 12px; color: #ccc;'>HỆ THỐNG QUẢN LÝ LỊCH HẸN</p>
+                            </div>
 
-        <!-- Main Content -->
-        <div style='background: white; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.15);'>
-            <!-- Alert Icon & Title -->
-            <div style='text-align: center; margin-bottom: 30px;'>
-                <div style='font-size: 48px; margin-bottom: 15px;'>❌</div>
-                <h2 style='color: #dc3545; margin: 0; font-size: 24px; font-weight: 600;'>Lịch Hẹn Đã Bị Hủy</h2>
-                <p style='color: #999; margin: 10px 0 0 0; font-size: 13px;'>Thông báo chính thức từ hệ thống Aesthetics</p>
-            </div>
+                            <!-- Main Content -->
+                            <div style='background-color: white; padding: 30px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);'>
+                                <!-- Title -->
+                                <h2 style='color: #d32f2f; margin: 0 0 10px 0; font-size: 18px; font-weight: 600;'>Thông báo Hủy Lịch Hẹn</h2>
+                                <p style='color: #666; margin: 0 0 25px 0; font-size: 13px;'>Lịch hẹn của quý khách đã được hủy thành công khỏi hệ thống.</p>
 
-            <!-- Info Card -->
-            <div style='background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 24px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #dc3545;'>
-                <h3 style='color: #333; margin: 0 0 20px 0; font-size: 16px; font-weight: 600;'>📋 Chi Tiết Lịch Hẹn Đã Hủy</h3>
-                <table style='width: 100%; border-collapse: collapse;'>
-                    <tr style='border-bottom: 1px solid rgba(0,0,0,0.08);'>
-                        <td style='padding: 12px 0; font-weight: 600; color: #2c3e50; width: 35%;'>Khách hàng:</td>
-                        <td style='padding: 12px 0; color: #555;'><strong>{customerName}</strong></td>
-                    </tr>
-                    <tr style='border-bottom: 1px solid rgba(0,0,0,0.08);'>
-                        <td style='padding: 12px 0; font-weight: 600; color: #2c3e50;'>Dịch vụ:</td>
-                        <td style='padding: 12px 0; color: #555;'>{serviceName}</td>
-                    </tr>
-                    <tr style='border-bottom: 1px solid rgba(0,0,0,0.08);'>
-                        <td style='padding: 12px 0; font-weight: 600; color: #2c3e50;'>Thời gian dự định:</td>
-                        <td style='padding: 12px 0; color: #e74c3c; font-weight: 600;'>{appointmentTime:dd/MM/yyyy HH:mm}</td>
-                    </tr>
-                    <tr style='border-bottom: 1px solid rgba(0,0,0,0.08);'>
-                        <td style='padding: 12px 0; font-weight: 600; color: #2c3e50;'>Nhân viên phụ trách:</td>
-                        <td style='padding: 12px 0; color: #555;'>{staffName}</td>
-                    </tr>
-                    <tr>
-                        <td style='padding: 12px 0; font-weight: 600; color: #2c3e50;'>Thời gian hủy:</td>
-                        <td style='padding: 12px 0; color: #666;'>{DateTime.Now:dd/MM/yyyy HH:mm}</td>
-                    </tr>
-                </table>
-            </div>
+                                <!-- Appointment Details -->
+                                <div style='background-color: #f9f9f9; padding: 20px; border-left: 4px solid #d32f2f; margin-bottom: 25px;'>
+                                    <h3 style='color: #333; margin: 0 0 16px 0; font-size: 14px; font-weight: 600;'>Chi Tiết Lịch Hẹn Đã Hủy</h3>
+                                    <table style='width: 100%; border-collapse: collapse; font-size: 13px;'>
+                                        <tr style='border-bottom: 1px solid #eee;'>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a; width: 30%;'>Khách hàng:</td>
+                                            <td style='padding: 10px 0; color: #333;'>{customerName}</td>
+                                        </tr>
+                                        <tr style='border-bottom: 1px solid #eee;'>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a;'>Dịch vụ:</td>
+                                            <td style='padding: 10px 0; color: #333;'>{serviceName}</td>
+                                        </tr>
+                                        <tr style='border-bottom: 1px solid #eee;'>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a;'>Thời gian dự định:</td>
+                                            <td style='padding: 10px 0; color: #d32f2f; font-weight: 600;'>{appointmentTime:dd/MM/yyyy HH:mm}</td>
+                                        </tr>
+                                        <tr style='border-bottom: 1px solid #eee;'>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a;'>Nhân viên phụ trách:</td>
+                                            <td style='padding: 10px 0; color: #333;'>{staffName}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a;'>Thời gian hủy:</td>
+                                            <td style='padding: 10px 0; color: #666;'>{DateTime.Now:dd/MM/yyyy HH:mm}</td>
+                                        </tr>
+                                    </table>
+                                </div>
 
-            <!-- Important Notes -->
-            <div style='background: linear-gradient(135deg, #fff5f5 0%, #ffe0e0 100%); padding: 20px; border-radius: 8px; border-left: 4px solid #e74c3c; margin: 25px 0;'>
-                <h4 style='color: #c92a2a; margin: 0 0 12px 0; font-size: 14px; font-weight: 600;'>⚠️ Thông Tin Quan Trọng</h4>
-                <ul style='color: #a61e4d; margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.8;'>
-                    <li>✓ Lịch hẹn đã được hủy thành công khỏi hệ thống</li>
-                    <li>💰 Nếu đã thanh toán, chúng tôi sẽ hoàn tiền trong 3-5 ngày làm việc</li>
-                    <li>📅 Quý khách có thể đặt lịch mới bất kỳ lúc nào qua hệ thống</li>
-                    <li>🔔 Bạn sẽ nhận thông báo khi hoàn tiền hoàn tất</li>
-                </ul>
-            </div>
+                                <!-- Important Information -->
+                                <div style='background-color: #fff3cd; padding: 16px; border-radius: 4px; margin-bottom: 25px; border-left: 4px solid #ff9800;'>
+                                    <h4 style='color: #1a1a1a; margin: 0 0 12px 0; font-size: 13px; font-weight: 600;'>Thông tin quan trọng:</h4>
+                                    <ul style='color: #333; margin: 0; padding-left: 20px; font-size: 12px; line-height: 1.8;'>
+                                        <li>Lịch hẹn đã được hủy khỏi hệ thống</li>
+                                        <li>Nếu đã thanh toán, chúng tôi sẽ hoàn tiền trong 3-5 ngày làm việc</li>
+                                        <li>Quý khách có thể đặt lịch mới bất kỳ lúc nào</li>
+                                        <li>Thông báo hoàn tiền sẽ được gửi riêng</li>
+                                    </ul>
+                                </div>
 
-            <!-- Call to Action -->
-            <div style='text-align: center; margin: 30px 0;'>
-                <a href='https://aesthetics.com/book-appointment' style='display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);'>
-                    📅 Đặt Lịch Mới Ngay
-                </a>
-            </div>
+                                <!-- Call to Action -->
+                                <div style='text-align: center; margin-bottom: 25px;'>
+                                    <a href='https://aesthetics.com/book-appointment' style='display: inline-block; background-color: #1a1a1a; color: white; padding: 12px 28px; text-decoration: none; border-radius: 4px; font-weight: 600; font-size: 13px;'>
+                                        Đặt Lịch Mới
+                                    </a>
+                                </div>
 
-            <!-- Footer Divider -->
-            <div style='border-top: 2px solid #f0f0f0; margin: 30px 0; padding-top: 25px;'>
-                <!-- Contact Info -->
-                <div style='text-align: center; background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%); padding: 20px; border-radius: 8px; margin-bottom: 20px;'>
-                    <p style='color: #2c3e50; margin: 0; font-weight: 600; font-size: 14px;'>📞 Cần Hỗ Trợ? Liên Hệ Ngay</p>
-                    <p style='color: #667eea; margin: 8px 0 0 0; font-size: 14px;'>
-                        <strong>☎️ 1900.1234</strong> | 
-                        <strong>✉️ support@aesthetics.com</strong>
-                    </p>
-                    <p style='color: #999; margin: 8px 0 0 0; font-size: 12px;'>Hỗ trợ 24/7 - 7 ngày/tuần</p>
-                </div>
+                                <!-- Divider -->
+                                <div style='border-top: 1px solid #eee; margin: 25px 0; padding-top: 20px;'>
+                                    <!-- Contact Info -->
+                                    <div style='text-align: center; margin-bottom: 20px;'>
+                                        <p style='color: #1a1a1a; margin: 0; font-weight: 600; font-size: 13px;'>Liên Hệ Hỗ Trợ</p>
+                                        <p style='color: #666; margin: 8px 0 0 0; font-size: 12px;'>
+                                            Điện thoại: 0123.456.789 | Email: support@aesthetics.com
+                                        </p>
+                                        <p style='color: #999; margin: 4px 0 0 0; font-size: 11px;'>Hỗ trợ 24/7 - 7 ngày/tuần</p>
+                                    </div>
 
-                <p style='color: #999; margin: 12px 0; text-align: center; font-size: 12px; line-height: 1.6;'>
-                    Cảm ơn quý khách đã tin tưởng dịch vụ Aesthetics Premium Care.<br>
-                    Hy vọng được phục vụ bạn lần tiếp theo.
-                </p>
-                <p style='color: #bbb; margin: 8px 0 0 0; text-align: center; font-size: 11px;'>
-                    © 2026 Aesthetics Premium Care. Mọi quyền được bảo lưu.
-                </p>
-            </div>
-        </div>
-    </div>
-</body>
-</html>";
+                                    <p style='color: #999; margin: 12px 0; text-align: center; font-size: 12px; line-height: 1.6;'>
+                                        Cảm ơn quý khách đã tin tưởng dịch vụ Aesthetics Premium Care.
+                                    </p>
+                                    <p style='color: #bbb; margin: 8px 0 0 0; text-align: center; font-size: 11px;'>
+                                        © 2026 Aesthetics Premium Care. Mọi quyền được bảo lưu.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </body>
+                    </html>";
 		}
 
 		/// <summary>
@@ -319,101 +314,96 @@ namespace Aesthetics.Data.AestheticsServices.EmailService
 		private string CreateAppointmentConfirmationEmailBody(string customerName, string serviceName, DateTime appointmentTime, string staffName)
 		{
 			return $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-</head>
-<body style='margin: 0; padding: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); font-family: -apple-system, BlinkMacSystemFont, ""Segoe UI"", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; font-size: 14px; color: #333;'>
-    <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
-        <!-- Header -->
-        <div style='background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); padding: 40px 30px; border-radius: 12px 12px 0 0; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
-            <h1 style='color: #fff; margin: 0; font-size: 28px; font-weight: 600;'>Aesthetics Premium Care</h1>
-            <p style='color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 13px; letter-spacing: 0.5px;'>HỆ THỐNG QUẢN LÝ LỊCH HẸN</p>
-        </div>
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset='UTF-8'>
+                        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                    </head>
+                    <body style='margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, ""Segoe UI"", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; font-size: 14px; line-height: 1.5; color: #333;'>
+                        <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                            <!-- Header -->
+                            <div style='background-color: #1a1a1a; padding: 30px; color: white; text-align: center; margin-bottom: 20px;'>
+                                <h1 style='margin: 0; font-size: 24px; font-weight: 600; letter-spacing: 0.5px;'>AESTHETICS PREMIUM CARE</h1>
+                                <p style='margin: 8px 0 0 0; font-size: 12px; color: #ccc;'>HỆ THỐNG QUẢN LÝ LỊCH HẸN</p>
+                            </div>
 
-        <!-- Main Content -->
-        <div style='background: white; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.15);'>
-            <!-- Success Icon & Title -->
-            <div style='text-align: center; margin-bottom: 30px;'>
-                <div style='font-size: 48px; margin-bottom: 15px;'>✅</div>
-                <h2 style='color: #28a745; margin: 0; font-size: 24px; font-weight: 600;'>Đặt Lịch Thành Công!</h2>
-                <p style='color: #666; margin: 10px 0 0 0; font-size: 13px;'>Cảm ơn quý khách đã tin tưởng dịch vụ của chúng tôi</p>
-            </div>
+                            <!-- Main Content -->
+                            <div style='background-color: white; padding: 30px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);'>
+                                <!-- Title -->
+                                <h2 style='color: #4caf50; margin: 0 0 10px 0; font-size: 18px; font-weight: 600;'>Lịch Hẹn Được Xác Nhận</h2>
+                                <p style='color: #666; margin: 0 0 25px 0; font-size: 13px;'>Cảm ơn quý khách đã tin tưởng dịch vụ của chúng tôi. Lịch hẹn của bạn đã được xác nhận.</p>
 
-            <!-- Appointment Info Card -->
-            <div style='background: linear-gradient(135deg, #e7f3ff 0%, #c2e9ff 100%); padding: 24px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #0066cc;'>
-                <h3 style='color: #003d99; margin: 0 0 20px 0; font-size: 16px; font-weight: 600;'>📋 Thông Tin Lịch Hẹn</h3>
-                <table style='width: 100%; border-collapse: collapse;'>
-                    <tr style='border-bottom: 1px solid rgba(0,0,0,0.08);'>
-                        <td style='padding: 12px 0; font-weight: 600; color: #003d99; width: 35%;'>Khách hàng:</td>
-                        <td style='padding: 12px 0; color: #333;'><strong>{customerName}</strong></td>
-                    </tr>
-                    <tr style='border-bottom: 1px solid rgba(0,0,0,0.08);'>
-                        <td style='padding: 12px 0; font-weight: 600; color: #003d99;'>Dịch vụ:</td>
-                        <td style='padding: 12px 0; color: #333;'>{serviceName}</td>
-                    </tr>
-                    <tr style='border-bottom: 1px solid rgba(0,0,0,0.08);'>
-                        <td style='padding: 12px 0; font-weight: 600; color: #003d99;'>🕐 Thời gian:</td>
-                        <td style='padding: 12px 0; color: #0066cc; font-weight: 600; font-size: 15px;'>{appointmentTime:dd/MM/yyyy HH:mm}</td>
-                    </tr>
-                    <tr>
-                        <td style='padding: 12px 0; font-weight: 600; color: #003d99;'>👨‍⚕️ Bác Sĩ:</td>
-                        <td style='padding: 12px 0; color: #333;'>{staffName}</td>
-                    </tr>
-                </table>
-            </div>
+                                <!-- Appointment Details -->
+                                <div style='background-color: #e8f5e9; padding: 20px; border-left: 4px solid #4caf50; margin-bottom: 25px;'>
+                                    <h3 style='color: #333; margin: 0 0 16px 0; font-size: 14px; font-weight: 600;'>Thông Tin Lịch Hẹn</h3>
+                                    <table style='width: 100%; border-collapse: collapse; font-size: 13px;'>
+                                        <tr style='border-bottom: 1px solid #c8e6c9;'>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a; width: 30%;'>Khách hàng:</td>
+                                            <td style='padding: 10px 0; color: #333;'>{customerName}</td>
+                                        </tr>
+                                        <tr style='border-bottom: 1px solid #c8e6c9;'>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a;'>Dịch vụ:</td>
+                                            <td style='padding: 10px 0; color: #333;'>{serviceName}</td>
+                                        </tr>
+                                        <tr style='border-bottom: 1px solid #c8e6c9;'>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a;'>Thời gian:</td>
+                                            <td style='padding: 10px 0; color: #1a1a1a; font-weight: 600;'>{appointmentTime:dd/MM/yyyy HH:mm}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a;'>Bác sĩ:</td>
+                                            <td style='padding: 10px 0; color: #333;'>{staffName}</td>
+                                        </tr>
+                                    </table>
+                                </div>
 
-            <!-- Instructions -->
-            <div style='background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%); padding: 20px; border-radius: 8px; border-left: 4px solid #28a745; margin: 25px 0;'>
-                <h4 style='color: #1b5e20; margin: 0 0 12px 0; font-size: 14px; font-weight: 600;'>✅ Chuẩn Bị Cho Buổi Hẹn</h4>
-                <ul style='color: #2e7d32; margin: 0; padding-left: 20px; font-size: 13px; line-height: 1.8;'>
-                    <li>⏰ Vui lòng có mặt trước <strong>15 phút</strong> so với giờ hẹn</li>
-                    <li>📄 Mang theo <strong>CMND/CCCD</strong> để xác nhận thông tin</li>
-                    <li>💄 Tháo trang sức và makeup nếu có</li>
-                    <li>🏥 Thông báo tình trạng sức khỏe đặc biệt (nếu có)</li>
-                </ul>
-            </div>
+                                <!-- Preparation Instructions -->
+                                <div style='background-color: #f9f9f9; padding: 20px; border-radius: 4px; margin-bottom: 25px; border-left: 4px solid #1a1a1a;'>
+                                    <h4 style='color: #1a1a1a; margin: 0 0 12px 0; font-size: 13px; font-weight: 600;'>Hướng Dẫn Chuẩn Bị</h4>
+                                    <ul style='color: #333; margin: 0; padding-left: 20px; font-size: 12px; line-height: 1.8;'>
+                                        <li>Vui lòng có mặt trước 15 phút so với giờ hẹn</li>
+                                        <li>Mang theo CMND/CCCD để xác nhận thông tin</li>
+                                        <li>Tháo trang sức và makeup nếu có</li>
+                                        <li>Thông báo tình trạng sức khỏe đặc biệt (nếu có)</li>
+                                    </ul>
+                                </div>
 
-            <!-- Call to Action -->
-            <div style='text-align: center; margin: 30px 0;'>
-                <a href='https://aesthetics.com/appointments' style='display: inline-block; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 14px; transition: all 0.3s ease; box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);'>
-                    📱 Quản Lý Lịch Của Tôi
-                </a>
-            </div>
+                                <!-- Important Notice -->
+                                <div style='background-color: #fef9c3; padding: 16px; border-radius: 4px; margin-bottom: 25px; border-left: 4px solid #f57f17;'>
+                                    <p style='color: #1a1a1a; margin: 0; font-size: 12px;'>
+                                        <strong>Thông báo:</strong> Chúng tôi sẽ gửi email nhắc nhở trước 24 giờ
+                                    </p>
+                                </div>
 
-            <!-- Important Note -->
-            <div style='background: linear-gradient(135deg, #fff3cd 0%, #ffe8a1 100%); padding: 16px; border-radius: 6px; border-left: 4px solid #ffc107; margin: 20px 0;'>
-                <p style='color: #856404; margin: 0; font-size: 12px; font-weight: 600;'>
-                    <strong>🔔 Nhắc nhở:</strong> Chúng tôi sẽ gửi email nhắc nhở trước 24 giờ
-                </p>
-            </div>
+                                <!-- Call to Action -->
+                                <div style='text-align: center; margin-bottom: 25px;'>
+                                    <a href='https://aesthetics.com/appointments' style='display: inline-block; background-color: #1a1a1a; color: white; padding: 12px 28px; text-decoration: none; border-radius: 4px; font-weight: 600; font-size: 13px;'>
+                                        Quản Lý Lịch Của Tôi
+                                    </a>
+                                </div>
 
-            <!-- Footer Divider -->
-            <div style='border-top: 2px solid #f0f0f0; margin: 30px 0; padding-top: 25px;'>
-                <!-- Contact Info -->
-                <div style='text-align: center; background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%); padding: 20px; border-radius: 8px; margin-bottom: 20px;'>
-                    <p style='color: #2c3e50; margin: 0; font-weight: 600; font-size: 14px;'>📞 Liên Hệ Chúng Tôi</p>
-                    <p style='color: #667eea; margin: 8px 0 0 0; font-size: 14px;'>
-                        <strong>☎️ 0123.456.789</strong> | 
-                        <strong>✉️ support@aesthetics.com</strong>
-                    </p>
-                    <p style='color: #999; margin: 8px 0 0 0; font-size: 12px;'>Hỗ trợ 24/7</p>
-                </div>
+                                <!-- Divider -->
+                                <div style='border-top: 1px solid #eee; margin: 25px 0; padding-top: 20px;'>
+                                    <!-- Contact Info -->
+                                    <div style='text-align: center; margin-bottom: 20px;'>
+                                        <p style='color: #1a1a1a; margin: 0; font-weight: 600; font-size: 13px;'>Liên Hệ Hỗ Trợ</p>
+                                        <p style='color: #666; margin: 8px 0 0 0; font-size: 12px;'>
+                                            Điện thoại: 0123.456.789 | Email: support@aesthetics.com
+                                        </p>
+                                        <p style='color: #999; margin: 4px 0 0 0; font-size: 11px;'>Hỗ trợ 24/7</p>
+                                    </div>
 
-                <p style='color: #999; margin: 12px 0; text-align: center; font-size: 12px; line-height: 1.6;'>
-                    Cảm ơn quý khách đã chọn dịch vụ Aesthetics Premium Care.<br>
-                    Chúng tôi sẽ mang đến cho bạn trải nghiệm tuyệt vời nhất.
-                </p>
-                <p style='color: #bbb; margin: 8px 0 0 0; text-align: center; font-size: 11px;'>
-                    © 2026 Aesthetics Premium Care. Mọi quyền được bảo lưu.
-                </p>
-            </div>
-        </div>
-    </div>
-</body>
-</html>";
+                                    <p style='color: #999; margin: 12px 0; text-align: center; font-size: 12px; line-height: 1.6;'>
+                                        Chúng tôi sẽ mang đến cho bạn trải nghiệm tuyệt vời nhất.
+                                    </p>
+                                    <p style='color: #bbb; margin: 8px 0 0 0; text-align: center; font-size: 11px;'>
+                                        © 2026 Aesthetics Premium Care. Mọi quyền được bảo lưu.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </body>
+                    </html>";
 		}
 
 		/// <summary>
@@ -425,116 +415,108 @@ namespace Aesthetics.Data.AestheticsServices.EmailService
 			var hoursRemaining = (int)timeRemaining.TotalHours;
 
 			return $@"
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset='UTF-8'>
-    <meta name='viewport' content='width=device-width, initial-scale=1.0'>
-</head>
-<body style='margin: 0; padding: 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); font-family: -apple-system, BlinkMacSystemFont, ""Segoe UI"", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; font-size: 14px; color: #333;'>
-    <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
-        <!-- Header -->
-        <div style='background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); padding: 40px 30px; border-radius: 12px 12px 0 0; text-align: center; box-shadow: 0 4px 6px rgba(0,0,0,0.1);'>
-            <h1 style='color: #fff; margin: 0; font-size: 28px; font-weight: 600;'>Aesthetics Premium Care</h1>
-            <p style='color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 13px; letter-spacing: 0.5px;'>HỆ THỐNG QUẢN LÝ LỊCH HẸN</p>
-        </div>
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset='UTF-8'>
+                        <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+                    </head>
+                    <body style='margin: 0; padding: 0; background-color: #f5f5f5; font-family: -apple-system, BlinkMacSystemFont, ""Segoe UI"", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif; font-size: 14px; line-height: 1.5; color: #333;'>
+                        <div style='max-width: 600px; margin: 0 auto; padding: 20px;'>
+                            <!-- Header -->
+                            <div style='background-color: #1a1a1a; padding: 30px; color: white; text-align: center; margin-bottom: 20px;'>
+                                <h1 style='margin: 0; font-size: 24px; font-weight: 600; letter-spacing: 0.5px;'>AESTHETICS PREMIUM CARE</h1>
+                                <p style='margin: 8px 0 0 0; font-size: 12px; color: #ccc;'>HỆ THỐNG QUẢN LÝ LỊCH HẸN</p>
+                            </div>
 
-        <!-- Main Content -->
-        <div style='background: white; padding: 40px; border-radius: 0 0 12px 12px; box-shadow: 0 8px 16px rgba(0,0,0,0.15);'>
-            <!-- Reminder Icon & Title -->
-            <div style='text-align: center; margin-bottom: 30px;'>
-                <div style='font-size: 48px; margin-bottom: 15px;'>🔔</div>
-                <h2 style='color: #ff6b35; margin: 0; font-size: 24px; font-weight: 600;'>Nhắc Nhở Lịch Hẹn</h2>
-                <p style='color: #666; margin: 10px 0 0 0; font-size: 13px;'>Lịch hẹn của quý khách sắp đến</p>
-            </div>
+                            <!-- Main Content -->
+                            <div style='background-color: white; padding: 30px; border-radius: 4px; box-shadow: 0 1px 3px rgba(0,0,0,0.1);'>
+                                <!-- Title -->
+                                <h2 style='color: #ff6f00; margin: 0 0 10px 0; font-size: 18px; font-weight: 600;'>Nhắc Nhở Lịch Hẹn</h2>
+                                <p style='color: #666; margin: 0 0 25px 0; font-size: 13px;'>Lịch hẹn của quý khách sắp đến. Vui lòng xác nhận sự có mặt.</p>
 
-            <!-- Countdown Timer -->
-            <div style='background: linear-gradient(135deg, #fff3e0 0%, #ffe0b2 100%); padding: 24px; border-radius: 8px; margin: 25px 0; text-align: center; border: 2px solid #ff6b35;'>
-                <p style='color: #e65100; margin: 0 0 10px 0; font-size: 12px; font-weight: 600;'>⏱️ THỜI GIAN CÒN LẠI</p>
-                <div style='background: white; padding: 16px; border-radius: 6px; margin: 0;'>
-                    <p style='color: #ff6b35; margin: 0; font-size: 28px; font-weight: 700;'>
-                        {hoursRemaining} giờ nữa
-                    </p>
-                    <p style='color: #e65100; margin: 8px 0 0 0; font-size: 12px;'>
-                        Vui lòng xác nhận sự có mặt của quý khách
-                    </p>
-                </div>
-            </div>
+                                <!-- Time Remaining -->
+                                <div style='background-color: #fff3e0; padding: 20px; border-left: 4px solid #ff6f00; margin-bottom: 25px; text-align: center; border-radius: 4px;'>
+                                    <p style='color: #e65100; margin: 0 0 8px 0; font-size: 12px; font-weight: 600;'>THỜI GIAN CÒN LẠI</p>
+                                    <p style='color: #ff6f00; margin: 0; font-size: 24px; font-weight: 700;'>{hoursRemaining} giờ nữa</p>
+                                </div>
 
-            <!-- Appointment Details Card -->
-            <div style='background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%); padding: 24px; border-radius: 8px; margin: 25px 0; border-left: 4px solid #ff6b35;'>
-                <h3 style='color: #333; margin: 0 0 20px 0; font-size: 16px; font-weight: 600;'>📋 Chi Tiết Lịch Hẹn</h3>
-                <table style='width: 100%; border-collapse: collapse;'>
-                    <tr style='border-bottom: 1px solid rgba(0,0,0,0.08);'>
-                        <td style='padding: 12px 0; font-weight: 600; color: #2c3e50; width: 35%;'>Khách hàng:</td>
-                        <td style='padding: 12px 0; color: #333;'><strong>{customerName}</strong></td>
-                    </tr>
-                    <tr style='border-bottom: 1px solid rgba(0,0,0,0.08);'>
-                        <td style='padding: 12px 0; font-weight: 600; color: #2c3e50;'>Dịch vụ:</td>
-                        <td style='padding: 12px 0; color: #333;'>{serviceName}</td>
-                    </tr>
-                    <tr style='border-bottom: 1px solid rgba(0,0,0,0.08);'>
-                        <td style='padding: 12px 0; font-weight: 600; color: #2c3e50;'>🕐 Thời gian:</td>
-                        <td style='padding: 12px 0; color: #ff6b35; font-weight: 700; font-size: 16px;'>{appointmentTime:dd/MM/yyyy HH:mm}</td>
-                    </tr>
-                    <tr>
-                        <td style='padding: 12px 0; font-weight: 600; color: #2c3e50;'>👨‍⚕️ Nhân viên:</td>
-                        <td style='padding: 12px 0; color: #333;'>{staffName}</td>
-                    </tr>
-                </table>
-            </div>
+                                <!-- Appointment Details -->
+                                <div style='background-color: #f9f9f9; padding: 20px; border-left: 4px solid #ff6f00; margin-bottom: 25px;'>
+                                    <h3 style='color: #333; margin: 0 0 16px 0; font-size: 14px; font-weight: 600;'>Chi Tiết Lịch Hẹn</h3>
+                                    <table style='width: 100%; border-collapse: collapse; font-size: 13px;'>
+                                        <tr style='border-bottom: 1px solid #eee;'>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a; width: 30%;'>Khách hàng:</td>
+                                            <td style='padding: 10px 0; color: #333;'>{customerName}</td>
+                                        </tr>
+                                        <tr style='border-bottom: 1px solid #eee;'>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a;'>Dịch vụ:</td>
+                                            <td style='padding: 10px 0; color: #333;'>{serviceName}</td>
+                                        </tr>
+                                        <tr style='border-bottom: 1px solid #eee;'>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a;'>Thời gian:</td>
+                                            <td style='padding: 10px 0; color: #1a1a1a; font-weight: 600;'>{appointmentTime:dd/MM/yyyy HH:mm}</td>
+                                        </tr>
+                                        <tr>
+                                            <td style='padding: 10px 0; font-weight: 600; color: #1a1a1a;'>Nhân viên:</td>
+                                            <td style='padding: 10px 0; color: #333;'>{staffName}</td>
+                                        </tr>
+                                    </table>
+                                </div>
 
-            <!-- Preparation Checklist -->
-            <div style='background: linear-gradient(135deg, #e8f5e8 0%, #c8e6c9 100%); padding: 20px; border-radius: 8px; border-left: 4px solid #28a745; margin: 25px 0;'>
-                <h4 style='color: #1b5e20; margin: 0 0 12px 0; font-size: 14px; font-weight: 600;'>✅ Danh Sách Chuẩn Bị</h4>
-                <ul style='color: #2e7d32; margin: 0; padding-left: 20px; font-size: 13px; line-height: 2;'>
-                    <li>✓ Đến trước <strong>15 phút</strong> để làm thủ tục</li>
-                    <li>✓ Mang theo <strong>CMND/CCCD</strong> và giấy tờ cần thiết</li>
-                    <li>✓ Tháo trang sức và makeup (nếu có)</li>
-                    <li>✓ Thông báo tình trạng sức khỏe đặc biệt</li>
-                </ul>
-            </div>
+                                <!-- Preparation Checklist -->
+                                <div style='background-color: #f9f9f9; padding: 20px; border-radius: 4px; margin-bottom: 25px; border-left: 4px solid #4caf50;'>
+                                    <h4 style='color: #1a1a1a; margin: 0 0 12px 0; font-size: 13px; font-weight: 600;'>Danh Sách Chuẩn Bị</h4>
+                                    <ul style='color: #333; margin: 0; padding-left: 20px; font-size: 12px; line-height: 2;'>
+                                        <li>Đến trước 15 phút để làm thủ tục</li>
+                                        <li>Mang theo CMND/CCCD và giấy tờ cần thiết</li>
+                                        <li>Tháo trang sức và makeup (nếu có)</li>
+                                        <li>Thông báo tình trạng sức khỏe đặc biệt</li>
+                                    </ul>
+                                </div>
 
-            <!-- Quick Actions -->
-            <div style='display: flex; gap: 12px; margin: 30px 0;'>
-                <a href='https://aesthetics.com/confirm' style='flex: 1; text-align: center; background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 12px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 13px; box-shadow: 0 4px 12px rgba(40, 167, 69, 0.2);'>
-                    ✓ Xác Nhận
-                </a>
-                <a href='https://aesthetics.com/reschedule' style='flex: 1; text-align: center; background: linear-gradient(135deg, #ffc107 0%, #ff9800 100%); color: white; padding: 12px; text-decoration: none; border-radius: 6px; font-weight: 600; font-size: 13px; box-shadow: 0 4px 12px rgba(255, 152, 0, 0.2);'>
-                    📅 Đổi Lịch
-                </a>
-            </div>
+                                <!-- Action Buttons -->
+                                <div style='display: flex; gap: 10px; margin-bottom: 25px;'>
+                                    <div style='flex: 1;'>
+                                        <a href='https://aesthetics.com/confirm' style='display: block; text-align: center; background-color: #4caf50; color: white; padding: 12px; text-decoration: none; border-radius: 4px; font-weight: 600; font-size: 13px;'>
+                                            Xác Nhận
+                                        </a>
+                                    </div>
+                                    <div style='flex: 1;'>
+                                        <a href='https://aesthetics.com/reschedule' style='display: block; text-align: center; background-color: #ff6f00; color: white; padding: 12px; text-decoration: none; border-radius: 4px; font-weight: 600; font-size: 13px;'>
+                                            Đổi Lịch
+                                        </a>
+                                    </div>
+                                </div>
 
-            <!-- Cancellation Notice -->
-            <div style='background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%); padding: 16px; border-radius: 6px; border-left: 4px solid #dc3545; margin: 20px 0;'>
-                <p style='color: #721c24; margin: 0; font-size: 12px;'>
-                    <strong>📞 Cần thay đổi?</strong> Liên hệ <a href='tel:0123456789' style='color: #721c24; font-weight: bold; text-decoration: none;'>0123.456.789</a> trước 24 giờ
-                </p>
-            </div>
+                                <!-- Cancellation Notice -->
+                                <div style='background-color: #ffebee; padding: 16px; border-radius: 4px; margin-bottom: 25px; border-left: 4px solid #d32f2f;'>
+                                    <p style='color: #b71c1c; margin: 0; font-size: 12px;'>
+                                        <strong>Cần thay đổi?</strong> Liên hệ <a href='tel:0123456789' style='color: #b71c1c; font-weight: bold; text-decoration: none;'>0123.456.789</a> trước 24 giờ
+                                    </p>
+                                </div>
 
-            <!-- Footer Divider -->
-            <div style='border-top: 2px solid #f0f0f0; margin: 30px 0; padding-top: 25px;'>
-                <!-- Contact Info -->
-                <div style='text-align: center; background: linear-gradient(135deg, #f8f9ff 0%, #f0f4ff 100%); padding: 20px; border-radius: 8px; margin-bottom: 20px;'>
-                    <p style='color: #2c3e50; margin: 0; font-weight: 600; font-size: 14px;'>📞 Hỗ Trợ 24/7</p>
-                    <p style='color: #667eea; margin: 8px 0 0 0; font-size: 14px;'>
-                        <strong>☎️ 0123.456.789</strong> | 
-                        <strong>✉️ support@aesthetics.com</strong>
-                    </p>
-                </div>
+                                <!-- Divider -->
+                                <div style='border-top: 1px solid #eee; margin: 25px 0; padding-top: 20px;'>
+                                    <!-- Contact Info -->
+                                    <div style='text-align: center; margin-bottom: 20px;'>
+                                        <p style='color: #1a1a1a; margin: 0; font-weight: 600; font-size: 13px;'>Hỗ Trợ 24/7</p>
+                                        <p style='color: #666; margin: 8px 0 0 0; font-size: 12px;'>
+                                            Điện thoại: 0123.456.789 | Email: support@aesthetics.com
+                                        </p>
+                                    </div>
 
-                <p style='color: #999; margin: 12px 0; text-align: center; font-size: 12px; line-height: 1.6;'>
-                    Chúng tôi rất mong chờ được chào đón bạn.<br>
-                    Cảm ơn quý khách đã tin tưởng Aesthetics Premium Care.
-                </p>
-                <p style='color: #bbb; margin: 8px 0 0 0; text-align: center; font-size: 11px;'>
-                    © 2026 Aesthetics Premium Care. Mọi quyền được bảo lưu.
-                </p>
-            </div>
-        </div>
-    </div>
-</body>
-</html>";
+                                    <p style='color: #999; margin: 12px 0; text-align: center; font-size: 12px; line-height: 1.6;'>
+                                        Chúng tôi rất mong chờ được chào đón bạn.
+                                    </p>
+                                    <p style='color: #bbb; margin: 8px 0 0 0; text-align: center; font-size: 11px;'>
+                                        © 2026 Aesthetics Premium Care. Mọi quyền được bảo lưu.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                    </body>
+                    </html>";
 		}
 
 		/// <summary>

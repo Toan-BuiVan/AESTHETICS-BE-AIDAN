@@ -38,6 +38,7 @@ namespace Aesthetics.Data.AestheticsServices
 		private readonly ICustomerTreatmentSessionsRepository _customerTreatmentSessionRepository;
 		private readonly ITreatmentSessionRepository _treatmentSessionRepository;
 		private readonly IClinicRepository _clinicRepository;
+		private readonly ICustomerTreatmentSessionsService _customerTreatmentSessionsService;
 
 		// Constants for better maintainability
 		private const int MAX_DOCTOR_DAILY_LIMIT = 10;  // Giới hạn bác sĩ
@@ -63,7 +64,8 @@ namespace Aesthetics.Data.AestheticsServices
 			IInvoiceDetailsRepository invoiceDetailsRepository,
 			IPerformanceLogRepository performanceLogRepository,
 			IVoucherRepository voucherRepository,
-			IWalletRepository walletRepository)
+			IWalletRepository walletRepository,
+			ICustomerTreatmentSessionsService customerTreatmentSessionsService)
 		{
 			_logger = logger;
 			_appointmentRepositoty = appointmentRepositoty;
@@ -85,6 +87,7 @@ namespace Aesthetics.Data.AestheticsServices
 			_performanceLogRepository = performanceLogRepository;
 			_voucherRepository = voucherRepository;
 			_walletRepository = walletRepository;
+			_customerTreatmentSessionsService = customerTreatmentSessionsService;
 		}
 
 		public async Task<bool> create(CreateAppointment appointment)
@@ -243,15 +246,19 @@ namespace Aesthetics.Data.AestheticsServices
 
 				_logger.LogInformation("UPDATE_CTS_STATUS: Updating CustomerTreatmentSession Status");
 
-				customerTreatmentSession.Status = "DaDatLich";
-				var statusUpdated = await _customerTreatmentSessionRepository.UpdateEntity(customerTreatmentSession);
-				if (statusUpdated)
+				var updateCtsRequest = new UpdateCustomerTreatmentSessions
 				{
-					_logger.LogInformation("CTS_STATUS_UPDATED: CTS Status updated to 'DaDatLich'");
+					Id = customerTreatmentSessionId,
+					Status = "DaDatLich"
+				};
+				var ctsStatusUpdated = await _customerTreatmentSessionsService.update(updateCtsRequest);
+				if (ctsStatusUpdated)
+				{
+					_logger.LogInformation("CTS_STATUS_UPDATED: CTS Status updated to 'DaDatLich' via Service");
 				}
 				else
 				{
-					_logger.LogWarning("CTS_STATUS_UPDATE_FAILED: Failed to update CTS status");
+					_logger.LogWarning("CTS_STATUS_UPDATE_FAILED: Failed to update CTS status via Service");
 				}
 
 				_logger.LogInformation("CREATE_INVOICE: Creating Invoice");
@@ -635,7 +642,7 @@ namespace Aesthetics.Data.AestheticsServices
 				var totalCount = allMatching.Count();
 
 				var pagedAppointments = allMatching
-					.OrderByDescending(x => x.StartTime ?? DateTime.MinValue)
+					.OrderByDescending(x => x.CreationDate)
 					.Skip((appointment.PageNo - 1) * appointment.PageSize)
 					.Take(appointment.PageSize)
 					.ToList();
@@ -655,7 +662,7 @@ namespace Aesthetics.Data.AestheticsServices
 					PageCount = (int)Math.Ceiling((double)totalCount / appointment.PageSize)
 				};
 
-				_logger.LogInformation("GET_LIST_SUCCESS: Found {Count} appointments", totalCount);
+				_logger.LogInformation("GET_LIST_SUCCESS: Found {Count} appointments (sorted by CreationDate DESC)", totalCount);
 				return result;
 			}
 			catch (Exception ex)
@@ -689,6 +696,27 @@ namespace Aesthetics.Data.AestheticsServices
 				int serviceDuration = 60;
 				int serviceId = 0;
 				string serviceName = null;
+				bool? isSingleService = null;
+				if (request.ServiceId.HasValue && request.ServiceId.Value > 0)
+				{
+					var service = await _serviceRepository.GetById(request.ServiceId.Value);
+					if (service != null && !service.DeleteStatus)
+					{
+						serviceId = service.Id;
+						serviceName = service.ServiceName;
+						serviceDuration = service.Duration ?? 60;
+						isSingleService = service.IsCourse != true;  
+
+						_logger.LogInformation(
+							"GET_DOCTOR_AVAILABILITY_SERVICE: ServiceId={ServiceId}, ServiceName={ServiceName}, IsCourse={IsCourse}, IsSingleService={IsSingleService}, Duration={Duration}",
+							serviceId, serviceName, service.IsCourse, isSingleService, serviceDuration);
+					}
+					else
+					{
+						_logger.LogWarning("GET_DOCTOR_AVAILABILITY_SERVICE_NOT_FOUND: ServiceId {ServiceId} not found or deleted", request.ServiceId.Value);
+						return null;
+					}
+				}
 
 				if (ctsId.HasValue)
 				{
@@ -727,16 +755,26 @@ namespace Aesthetics.Data.AestheticsServices
 					x.Status != 4 &&
 					!x.DeleteStatus);
 
+				if (isSingleService == true && serviceId > 0)
+				{
+					appointments = appointments
+						.Where(x => x.ServiceId == serviceId)
+						.ToList();
+
+					_logger.LogInformation("GET_DOCTOR_AVAILABILITY_SINGLE_SERVICE_FILTER: Filtered to {Count} appointments for ServiceId {ServiceId}",
+						appointments.Count(), serviceId);
+				}
+
 				_logger.LogInformation("GET_DOCTOR_AVAILABILITY_APPOINTMENTS: Found {Count} appointments - " +
 					"DoctorId: {DoctorId}, Date: {Date:yyyy-MM-dd}",
 					appointments.Count(), request.DoctorId, request.Date.Date);
 
-				foreach (var apt in appointments)
-				{
-					_logger.LogInformation("GET_DOCTOR_AVAILABILITY_APPOINTMENT_DETAIL: " +
-						"AppointmentId: {Id}, StartTime: {Start:yyyy-MM-dd HH:mm:ss}",
-						apt.Id, apt.StartTime);
-				}
+				//foreach (var apt in appointments)
+				//{
+				//	_logger.LogInformation("GET_DOCTOR_AVAILABILITY_APPOINTMENT_DETAIL: " +
+				//		"AppointmentId: {Id}, StartTime: {Start:yyyy-MM-dd HH:mm:ss}",
+				//		apt.Id, apt.StartTime);
+				//}
 
 				// ✅ Time locks của clinic vào ngày đó (KHÔNG lọc theo doctor, chỉ lọc theo clinic và ngày)
 				var requestDate = request.Date.Date;
@@ -1150,7 +1188,7 @@ namespace Aesthetics.Data.AestheticsServices
 			ServiceEntity service,
 			int appointmentId,
 			int? treatmentPlanId = null,
-			int? treatmentSessionId = null)  // ✅ BỔSUNG parameter
+			int? treatmentSessionId = null) 
 		{
 			try
 			{
@@ -1326,22 +1364,25 @@ namespace Aesthetics.Data.AestheticsServices
 				TreatmentSessionEntity? treatmentSession = null;
 				TreatmentPlanEntity? treatmentPlan = null;
 				CustomerTreatmentPlanEntity? customerTreatmentPlan = null;
-				
+				CustomerTreatmentSessionEntity? customerTreatmentSession = null; // 🆕
+
 				if (appointment.CustomerTreatmentSessionId.HasValue)
 				{
-					var cts = await _customerTreatmentSessionRepository.GetById(appointment.CustomerTreatmentSessionId.Value);
-					if (cts?.TreatmentSessionId.HasValue == true)
+					// 🆕 Lấy CustomerTreatmentSession
+					customerTreatmentSession = await _customerTreatmentSessionRepository.GetById(appointment.CustomerTreatmentSessionId.Value);
+
+					if (customerTreatmentSession?.TreatmentSessionId.HasValue == true)
 					{
-						treatmentSession = await _treatmentSessionRepository.GetById(cts.TreatmentSessionId.Value);
-						
+						treatmentSession = await _treatmentSessionRepository.GetById(customerTreatmentSession.TreatmentSessionId.Value);
+
 						if (treatmentSession?.TreatmentPlanId.HasValue == true)
 						{
 							treatmentPlan = await _treatmentPlanRepository.GetById(treatmentSession.TreatmentPlanId.Value);
 						}
 
-						if (cts.CustomerTreatmentPlanId.HasValue)
+						if (customerTreatmentSession.CustomerTreatmentPlanId.HasValue)
 						{
-							customerTreatmentPlan = await _customerTreatmentPlansRepository.GetById(cts.CustomerTreatmentPlanId.Value);
+							customerTreatmentPlan = await _customerTreatmentPlansRepository.GetById(customerTreatmentSession.CustomerTreatmentPlanId.Value);
 						}
 					}
 				}
@@ -1365,13 +1406,37 @@ namespace Aesthetics.Data.AestheticsServices
 					x.AppointmentId == appointment.Id && !x.DeleteStatus);
 				var assignmentInfo = assignments.FirstOrDefault();
 
+				// 🆕 Build CustomerTreatmentSessionInfo
+				CustomerTreatmentSessionInfo? ctsInfo = null;
+				if (customerTreatmentSession != null)
+				{
+					ctsInfo = new CustomerTreatmentSessionInfo
+					{
+						Id = customerTreatmentSession.Id,
+						CustomerTreatmentPlanId = customerTreatmentSession.CustomerTreatmentPlanId,
+						TreatmentSessionId = customerTreatmentSession.TreatmentSessionId,
+						Status = customerTreatmentSession.Status,
+						// 🆕 Build nested CustomerTreatmentPlanInfo
+						CustomerTreatmentPlan = customerTreatmentPlan != null ? new CustomerTreatmentPlanInfo
+						{
+							Id = customerTreatmentPlan.Id,
+							CustomerId = customerTreatmentPlan.CustomerId,
+							TreatmentPlanId = customerTreatmentPlan.TreatmentPlanId,
+							TreatmentPlanName = treatmentPlan?.PlanName,
+							Status = customerTreatmentPlan.Status,
+							// 🆕 Lấy số buổi từ TreatmentPlan
+							TotalSessions = treatmentPlan?.TreatmentSessions?.Count()
+						} : null
+					};
+				}
+
 				return new AppointmentResponseModel
 				{
 					Id = appointment.Id,
 					Customer = customer != null ? new CustomerInfo
 					{
 						Id = customer.Id,
-						FullName = customer.FullName,			
+						FullName = customer.FullName,
 						Email = customer.Email,
 						PhoneNumber = customer.Phone,
 						DateOfBirth = customer.DateBirth,
@@ -1402,6 +1467,8 @@ namespace Aesthetics.Data.AestheticsServices
 						Duration = treatmentSession.Duration,
 						Description = treatmentSession.Description
 					} : null,
+					// 🆕 Thêm CustomerTreatmentSession info
+					CustomerTreatmentSession = ctsInfo,
 					StartTime = appointment.StartTime,
 					EndTime = endTime,
 					Status = GetAppointmentStatusName(appointment.Status ?? 0),
@@ -1444,78 +1511,6 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-		
-
-		private List<AvailableTimeSlot> CalculateAvailableTimeSlots(
-			List<AppointmentEntity> appointments,
-			List<AppointmentTimeLockEntity> timeLocks,
-			int serviceDuration,
-			int limit)
-		{
-			var availableSlots = new List<AvailableTimeSlot>();
-			int workStartHour = 8;
-			int workEndHour = 17;
-			int slotIntervalMinutes = 30;
-
-			// ✅ Định nghĩa giờ nghỉ trưa: 12h00 - 13h00
-			int lunchBreakStartHour = 12;
-			int lunchBreakEndHour = 13;
-
-			DateTime workDate = appointments.FirstOrDefault()?.StartTime?.Date ??
-								  timeLocks.FirstOrDefault()?.StartTime?.Date ??
-								  DateTime.UtcNow.Date;
-
-			var busyTimes = new List<(DateTime Start, DateTime End)>();
-			foreach (var appointment in appointments)
-			{
-				if (appointment.StartTime.HasValue)
-				{
-					busyTimes.Add((appointment.StartTime.Value, appointment.StartTime.Value.AddMinutes(30)));
-				}
-			}
-
-			foreach (var timeLock in timeLocks)
-			{
-				if (timeLock.StartTime.HasValue && timeLock.EndTime.HasValue)
-				{
-					busyTimes.Add((timeLock.StartTime.Value, timeLock.EndTime.Value));
-				}
-			}
-
-			// ✅ Thêm giờ nghỉ trưa vào danh sách busy times
-			var lunchBreakStart = workDate.AddHours(lunchBreakStartHour);
-			var lunchBreakEnd = workDate.AddHours(lunchBreakEndHour);
-			busyTimes.Add((lunchBreakStart, lunchBreakEnd));
-
-			var currentTime = workDate.AddHours(workStartHour);
-			while (currentTime.Hour < workEndHour && availableSlots.Count < limit)
-			{
-				var slotEndTime = currentTime.AddMinutes(serviceDuration);
-
-				// ✅ Kiểm tra xung đột với busy times (bao gồm cả giờ nghỉ trưa)
-				bool isConflict = busyTimes.Any(busy =>
-					currentTime < busy.End && slotEndTime > busy.Start);
-
-				if (slotEndTime.Hour <= workEndHour && !isConflict)
-				{
-					availableSlots.Add(new AvailableTimeSlot
-					{
-						StartTime = currentTime.ToString("HH:mm"),
-						EndTime = slotEndTime.ToString("HH:mm"),
-						IsAvailable = true
-					});
-				}
-
-				currentTime = currentTime.AddMinutes(slotIntervalMinutes);
-			}
-
-			_logger.LogInformation("CALCULATE_AVAILABLE_SLOTS: Tính toán khung giờ khả dụng - " +
-				"TotalSlots: {TotalSlots}, ServiceDuration: {ServiceDuration}m, " +
-				"LunchBreakTime: {LunchBreakStart}h - {LunchBreakEnd}h",
-				availableSlots.Count, serviceDuration, lunchBreakStartHour, lunchBreakEndHour);
-
-			return availableSlots;
-		}
 
 		private async Task<bool> CheckConflictWithExistingAppointments(
 			int staffId,
@@ -1614,92 +1609,191 @@ namespace Aesthetics.Data.AestheticsServices
 			try
 			{
 				// BƯỚC 1: Validate input
-				if (request == null || !request.CustomerTreatmentSessionId.HasValue)
+				if (request == null || !request.Status.HasValue)
 				{
-					_logger.LogWarning("UPDATE_APPOINTMENT_STATUS_INVALID_INPUT: Request hoặc CustomerTreatmentSessionId không hợp lệ");
+					_logger.LogWarning("UPDATE_APPOINTMENT_STATUS_INVALID_INPUT: Request hoặc Status không hợp lệ");
 					return false;
 				}
 
-				if (!request.Status.HasValue)
-				{
-					_logger.LogWarning("UPDATE_APPOINTMENT_STATUS_INVALID_STATUS: Status không được để trống");
-					return false;
-				}
-
-				int customerTreatmentSessionId = request.CustomerTreatmentSessionId.Value;
 				int newStatus = request.Status.Value;
 
-				// Validate status hợp lệ (1, 2, 3, 4 từ EnumAppointment)
+				// Validate status hợp lệ (1, 2, 3, 4)
 				var validStatuses = new[] { 1, 2, 3, 4 };
 				if (!validStatuses.Contains(newStatus))
 				{
-					_logger.LogWarning("UPDATE_APPOINTMENT_STATUS_INVALID_VALUE: Status không hợp lệ: {Status}. " +
-						"Chỉ chấp nhận: 1 (Booked), 2 (InProgress), 3 (Completed), 4 (Cancelled)",
-						newStatus);
+					_logger.LogWarning("UPDATE_APPOINTMENT_STATUS_INVALID_VALUE: Status không hợp lệ: {Status}", newStatus);
 					return false;
 				}
 
-				_logger.LogInformation("UPDATE_APPOINTMENT_STATUS_START: Cập nhật trạng thái - " +
-					"CustomerTreatmentSessionId {SessionId}, NewStatus: {Status}",
-					customerTreatmentSessionId, GetAppointmentStatusName(newStatus));
+				_logger.LogInformation("UPDATE_APPOINTMENT_STATUS_START: Status={Status}, CTS={CTS}, ServiceId={ServiceId}, CustomerId={CustomerId}",
+					GetAppointmentStatusName(newStatus), 
+					request.CustomerTreatmentSessionId, 
+					request.serviceId,
+					request.customerId);
 
-				if (customerTreatmentSessionId <= 0)
+				// 🆕 LOGIC CHÍNH: Phân loại dựa trên điều kiện
+				var isService = await _serviceRepository.GetById(request.serviceId ?? 0);
+				if (isService.IsCourse == true)
 				{
-					_logger.LogWarning("UPDATE_APPOINTMENT_STATUS_INVALID_ID: CustomerTreatmentSessionId không hợp lệ: {SessionId}",
-						customerTreatmentSessionId);
-					return false;
+					_logger.LogInformation("📍 CASE: Liệu trình - CustomerTreatmentSessionId={CTS}", request.CustomerTreatmentSessionId);
+					return await UpdateTreatmentPlanAppointmentStatusAsync(request.CustomerTreatmentSessionId.Value, newStatus);
 				}
-
-				// BƯỚC 2: Lấy CustomerTreatmentSession
-				var customerTreatmentSession = await _customerTreatmentSessionRepository.GetById(customerTreatmentSessionId);
-				if (customerTreatmentSession == null || customerTreatmentSession.DeleteStatus)
+				else
 				{
-					_logger.LogWarning("UPDATE_APPOINTMENT_STATUS_SESSION_NOT_FOUND: CustomerTreatmentSession không tồn tại - SessionId {SessionId}",
-						customerTreatmentSessionId);
+					_logger.LogInformation("📍 CASE: Dịch vụ đơn lẻ - ServiceId={ServiceId}, CustomerId={CustomerId}",
+						request.serviceId, request.customerId);
+					return await UpdateSingleServiceAppointmentStatusAsync(request.customerId.Value, request.serviceId.Value, newStatus);
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "UPDATE_APPOINTMENT_STATUS_EXCEPTION: Lỗi ngoại lệ khi cập nhật trạng thái");
+				return false;
+			}
+		}
+
+		/// <summary>
+		/// 🆕 Update status cho dịch vụ đơn lẻ - Filter theo customerId + serviceId
+		/// </summary>
+		private async Task<bool> UpdateSingleServiceAppointmentStatusAsync(int customerId, int serviceId, int newStatus)
+		{
+			try
+			{
+				_logger.LogInformation("[SINGLE_SERVICE] UPDATE_STATUS_START: CustomerId={CustomerId}, ServiceId={ServiceId}, Status={Status}",
+					customerId, serviceId, GetAppointmentStatusName(newStatus));
+
+				// ✅ STEP 1: Kiểm tra customer tồn tại
+				var customer = await _customerRepository.GetById(customerId);
+				if (customer == null || customer.DeleteStatus)
+				{
+					_logger.LogWarning("[SINGLE_SERVICE] CUSTOMER_NOT_FOUND: CustomerId={CustomerId}", customerId);
 					return false;
 				}
 
-				_logger.LogInformation("UPDATE_APPOINTMENT_STATUS_SESSION_FOUND: Tìm thấy session - Status cũ: {Status}, PlanId: {PlanId}",
-					customerTreatmentSession.Status, customerTreatmentSession.CustomerTreatmentPlanId);
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ Customer validated: {CustomerName}", customer.FullName);
 
-				// BƯỚC 3: Tìm appointment liên quan
-				var appointments = await _appointmentRepositoty.FindByPredicate(x =>
-					x.CustomerTreatmentSessionId == customerTreatmentSessionId &&
-					!x.DeleteStatus);
+				// ✅ STEP 2: Kiểm tra service tồn tại
+				var service = await _serviceRepository.GetById(serviceId);
+				if (service == null || service.DeleteStatus)
+				{
+					_logger.LogWarning("[SINGLE_SERVICE] SERVICE_NOT_FOUND: ServiceId={ServiceId}", serviceId);
+					return false;
+				}
+
+				// ✅ STEP 3: Check nếu là dịch vụ đơn lẻ (IsCourse != true)
+				if (service.IsCourse == true)
+				{
+					_logger.LogWarning("[SINGLE_SERVICE] SERVICE_IS_COURSE: ServiceId={ServiceId} là liệu trình, không phải dịch vụ đơn lẻ", serviceId);
+					return false;
+				}
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ Service validated: {ServiceName}, IsCourse={IsCourse}",
+					service.ServiceName, service.IsCourse);
+
+				// ✅ STEP 4: Lấy tất cả appointments của customer CHO service này (chưa bị hủy)
+				// ⭐ QUAN TRỌNG: Filter theo CustomerId + ServiceId
+				var appointments = (await _appointmentRepositoty.FindByPredicate(x =>
+					x.CustomerId == customerId &&  // 🔑 Filter theo customer
+					x.ServiceId == serviceId &&     // 🔑 Filter theo service
+					!x.DeleteStatus &&
+					x.Status != (int)AppointmentStatus.Cancelled))
+					.ToList();
+
+				_logger.LogInformation("[SINGLE_SERVICE] Found {Count} appointments for CustomerId={CustomerId}, ServiceId={ServiceId}",
+					appointments.Count, customerId, serviceId);
 
 				if (!appointments.Any())
 				{
-					_logger.LogWarning("UPDATE_APPOINTMENT_STATUS_NOT_FOUND: Không tìm thấy appointment nào - SessionId {SessionId}",
-						customerTreatmentSessionId);
-
-					// Nếu không có appointment, vẫn update status session và plan
-					string sessionStatus = MapAppointmentStatusToSessionStatus(newStatus);
-					customerTreatmentSession.Status = sessionStatus;
-					var sessionUpdated = await _customerTreatmentSessionRepository.UpdateEntity(customerTreatmentSession);
-
-					if (sessionUpdated)
-					{
-						_logger.LogInformation("UPDATE_APPOINTMENT_STATUS_SESSION_UPDATED_ONLY: Cập nhật session status thành công " +
-							"(không có appointment) - SessionId {SessionId}, NewStatus: {Status}",
-							customerTreatmentSessionId, sessionStatus);
-						
-						// Cập nhật Plan status
-						if (customerTreatmentSession.CustomerTreatmentPlanId.HasValue)
-						{
-							await UpdateCustomerTreatmentPlanStatusAsync(customerTreatmentSession.CustomerTreatmentPlanId.Value);
-						}
-						
-						return true;
-					}
-
-					_logger.LogError("UPDATE_APPOINTMENT_STATUS_SESSION_UPDATE_FAILED: Cập nhật session thất bại khi không có appointment");
+					_logger.LogWarning("[SINGLE_SERVICE] NO_APPOINTMENTS_FOUND: Không tìm thấy appointment nào");
 					return false;
 				}
 
-				_logger.LogInformation("UPDATE_APPOINTMENT_STATUS_FOUND: Tìm thấy {Count} appointment cần cập nhật",
-					appointments.Count());
+				// ✅ STEP 5: Cập nhật status của tất cả appointments
+				int updatedCount = 0;
+				foreach (var appointment in appointments)
+				{
+					try
+					{
+						int oldStatus = appointment.Status ?? 0;
+						appointment.Status = newStatus;
 
-				// BƯỚC 4: Cập nhật status của tất cả appointment
+						var updated = await _appointmentRepositoty.UpdateEntity(appointment);
+						if (updated)
+						{
+							updatedCount++;
+							_logger.LogInformation("[SINGLE_SERVICE] ✓ Appointment updated: ID={Id}, {OldStatus} → {NewStatus}",
+								appointment.Id, GetAppointmentStatusName(oldStatus), GetAppointmentStatusName(newStatus));
+
+							// ✅ STEP 5.1: Update AppointmentAssignment status nếu có
+							var assignments = await _appointmentAssignmentRepository.FindByPredicate(x =>
+								x.AppointmentId == appointment.Id && !x.DeleteStatus);
+
+							foreach (var assignment in assignments)
+							{
+								assignment.Status = newStatus;
+								await _appointmentAssignmentRepository.UpdateEntity(assignment);
+								_logger.LogInformation("[SINGLE_SERVICE] ✓ Assignment updated: ID={Id}", assignment.Id);
+							}
+						}
+						else
+						{
+							_logger.LogWarning("[SINGLE_SERVICE] ⚠ Failed to update appointment: ID={Id}", appointment.Id);
+						}
+					}
+					catch (Exception ex)
+					{
+						_logger.LogError(ex, "[SINGLE_SERVICE] Error updating appointment: ID={Id}", appointment.Id);
+					}
+				}
+
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ UPDATE_SUCCESS: Updated {UpdatedCount}/{TotalCount} appointments",
+					updatedCount, appointments.Count);
+
+				return updatedCount > 0;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "[SINGLE_SERVICE] UPDATE_EXCEPTION: Exception in UpdateSingleServiceAppointmentStatusAsync");
+				return false;
+			}
+		}
+
+		/// <summary>
+		/// 🆕 Update status cho treatment plan
+		/// </summary>
+		private async Task<bool> UpdateTreatmentPlanAppointmentStatusAsync(int customerTreatmentSessionId, int newStatus)
+		{
+			try
+			{
+				if (customerTreatmentSessionId <= 0)
+				{
+					_logger.LogWarning("[TREATMENT_PLAN] INVALID_ID: CustomerTreatmentSessionId={SessionId}", customerTreatmentSessionId);
+					return false;
+				}
+
+				_logger.LogInformation("[TREATMENT_PLAN] UPDATE_STATUS_START: SessionId={SessionId}, Status={Status}",
+					customerTreatmentSessionId, GetAppointmentStatusName(newStatus));
+
+				// ✅ STEP 1: Lấy CustomerTreatmentSession
+				var customerTreatmentSession = await _customerTreatmentSessionRepository.GetById(customerTreatmentSessionId);
+				if (customerTreatmentSession == null || customerTreatmentSession.DeleteStatus)
+				{
+					_logger.LogWarning("[TREATMENT_PLAN] SESSION_NOT_FOUND: SessionId={SessionId}", customerTreatmentSessionId);
+					return false;
+				}
+
+				_logger.LogInformation("[TREATMENT_PLAN] ✓ Session found: OldStatus={OldStatus}, PlanId={PlanId}",
+					customerTreatmentSession.Status, customerTreatmentSession.CustomerTreatmentPlanId);
+
+				// ✅ STEP 2: Tìm appointments liên quan
+				var appointments = (await _appointmentRepositoty.FindByPredicate(x =>
+					x.CustomerTreatmentSessionId == customerTreatmentSessionId &&
+					!x.DeleteStatus))
+					.ToList();
+
+				_logger.LogInformation("[TREATMENT_PLAN] Found {Count} appointments", appointments.Count);
+
+				// ✅ STEP 3: Cập nhật status của tất cả appointments
 				int updatedCount = 0;
 				foreach (var appointment in appointments)
 				{
@@ -1710,18 +1804,16 @@ namespace Aesthetics.Data.AestheticsServices
 					if (updated)
 					{
 						updatedCount++;
-						_logger.LogInformation("UPDATE_APPOINTMENT_STATUS_UPDATED: Appointment status cập nhật - " +
-							"AppointmentId {AppointmentId}, Status: {OldStatus} ({OldStatusName}) → {NewStatus} ({NewStatusName})",
-							appointment.Id, oldStatus, GetAppointmentStatusName(oldStatus), newStatus, GetAppointmentStatusName(newStatus));
+						_logger.LogInformation("[TREATMENT_PLAN] ✓ Appointment updated: ID={Id}, {OldStatus} → {NewStatus}",
+							appointment.Id, GetAppointmentStatusName(oldStatus), GetAppointmentStatusName(newStatus));
 					}
 					else
 					{
-						_logger.LogWarning("UPDATE_APPOINTMENT_STATUS_UPDATE_FAILED: Cập nhật appointment thất bại - AppointmentId {AppointmentId}",
-							appointment.Id);
+						_logger.LogWarning("[TREATMENT_PLAN] ⚠ Failed to update: ID={Id}", appointment.Id);
 					}
 				}
 
-				// BƯỚC 5: Cập nhật status của CustomerTreatmentSession (map từ appointment status)
+				// ✅ STEP 4: Cập nhật status của CustomerTreatmentSession
 				string newSessionStatus = MapAppointmentStatusToSessionStatus(newStatus);
 				string oldSessionStatus = customerTreatmentSession.Status;
 				customerTreatmentSession.Status = newSessionStatus;
@@ -1729,35 +1821,28 @@ namespace Aesthetics.Data.AestheticsServices
 
 				if (!sessionStatusUpdated)
 				{
-					_logger.LogError("UPDATE_APPOINTMENT_STATUS_SESSION_UPDATE_FAILED: Cập nhật session status thất bại - SessionId {SessionId}",
-						customerTreatmentSessionId);
+					_logger.LogError("[TREATMENT_PLAN] Failed to update session status: SessionId={SessionId}", customerTreatmentSessionId);
 					return false;
 				}
 
-				_logger.LogInformation("UPDATE_APPOINTMENT_STATUS_SESSION_UPDATED: Session status cập nhật thành công - " +
-					"SessionId {SessionId}, Status: {OldStatus} → {NewStatus}",
-					customerTreatmentSessionId, oldSessionStatus, newSessionStatus);
+				_logger.LogInformation("[TREATMENT_PLAN] ✓ Session status updated: {OldStatus} → {NewStatus}",
+					oldSessionStatus, newSessionStatus);
 
-				// BƯỚC 6: Cập nhật status của CustomerTreatmentPlan dựa trên tất cả sessions
+				// ✅ STEP 5: Cập nhật status của CustomerTreatmentPlan
 				bool planUpdated = false;
 				if (customerTreatmentSession.CustomerTreatmentPlanId.HasValue)
 				{
 					planUpdated = await UpdateCustomerTreatmentPlanStatusAsync(customerTreatmentSession.CustomerTreatmentPlanId.Value);
 				}
 
-				// BƯỚC 7: Log kết quả hoàn tất
-				_logger.LogInformation("UPDATE_APPOINTMENT_STATUS_SUCCESS: Cập nhật trạng thái hoàn tất - " +
-					"SessionId {SessionId}, AppointmentUpdated: {UpdatedCount}/{TotalCount}, " +
-					"AppointmentStatus: {AppointmentStatus} ({StatusName}), SessionStatus: {SessionStatus}, PlanUpdated: {PlanUpdated}",
-					customerTreatmentSessionId, updatedCount, appointments.Count(), newStatus, 
-					GetAppointmentStatusName(newStatus), newSessionStatus, planUpdated);
+				_logger.LogInformation("[TREATMENT_PLAN] ✓ UPDATE_SUCCESS: Updated {UpdatedCount} appointments, PlanUpdated={PlanUpdated}",
+					updatedCount, planUpdated);
 
-				return true;
+				return updatedCount > 0 || sessionStatusUpdated;
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "UPDATE_APPOINTMENT_STATUS_EXCEPTION: Lỗi ngoại lệ khi cập nhật trạng thái - SessionId {SessionId}",
-					request?.CustomerTreatmentSessionId ?? 0);
+				_logger.LogError(ex, "[TREATMENT_PLAN] UPDATE_EXCEPTION: Exception in UpdateTreatmentPlanAppointmentStatusAsync");
 				return false;
 			}
 		}

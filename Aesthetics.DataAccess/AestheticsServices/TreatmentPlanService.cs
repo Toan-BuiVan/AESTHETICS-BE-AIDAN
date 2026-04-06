@@ -329,6 +329,7 @@ namespace Aesthetics.Data.AestheticsServices
 				{
 					ServiceName = entity.Service.ServiceName,
 					ServiceId = entity.Service.Id,
+					ServiceTypeId = entity.Service.ServiceTypeId,
 					ServiceImage = entity.Service.ServiceImage,
 					Price = entity.Service.Price,
 					Duration = entity.Service.Duration,

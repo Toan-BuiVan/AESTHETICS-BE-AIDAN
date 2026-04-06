@@ -30,7 +30,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		private readonly IAppointmentService _appointmentService;
 		private readonly ICustomerRepository _customerRepository;
 		private readonly IInvoiceRepository _invoiceRepository; 
-		private readonly IInvoiceDetailsRepository _invoiceDetailsRepository; 
+		private readonly IInvoiceDetailsRepository _invoiceDetailsRepository;
+		private readonly ICustomerTreatmentSessionsService _customerTreatmentSessionsService;
 
 		private const int	LUNCH_BREAK_START = 12;
 		private const int LUNCH_BREAK_END = 13;
@@ -53,7 +54,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			IAppointmentAssignmentRepository appointmentAssignmentRepository,
 			IInvoiceRepository invoiceRepository, 
 			IInvoiceDetailsRepository invoiceDetailsRepository,
-			ICustomerRepository customerRepository) 
+			ICustomerRepository customerRepository,
+			ICustomerTreatmentSessionsService customerTreatmentSessionsService) 
 		{
 			_logger = logger;
 			_appointmentRepository = appointmentRepository;
@@ -70,6 +72,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			_invoiceRepository = invoiceRepository; 
 			_invoiceDetailsRepository = invoiceDetailsRepository;
 			_customerRepository = customerRepository;
+			_customerTreatmentSessionsService = customerTreatmentSessionsService;
 		}
 
 		/// <summary>Bài 1-2: Lấy slot trống của bác sĩ trong một ngày</summary>
@@ -682,7 +685,30 @@ namespace Aesthetics.Data.AestheticsServices.AI
 						_logger.LogWarning("⚠ Failed to create AppointmentAssignment, but appointment still created");
 					}
 
-					// ✅ STEP 8: Trả về response
+					// ✅ STEP 8: CẬP NHẬT STATUS CUSTOMERTREATMENTSESSION VIA SERVICE
+					if (customerTreatmentSessionId.HasValue)
+					{
+						_logger.LogInformation("📌 Updating CustomerTreatmentSession status via Service: SessionId={SessionId}",
+							customerTreatmentSessionId);
+
+						var updateCtsRequest = new UpdateCustomerTreatmentSessions
+						{
+							Id = customerTreatmentSessionId.Value,
+							Status = "DaDatLich"
+						};
+
+						var ctsStatusUpdated = await _customerTreatmentSessionsService.update(updateCtsRequest);
+						if (ctsStatusUpdated)
+						{
+							_logger.LogInformation("✓ CTS Status updated successfully to 'DaDatLich' via Service");
+						}
+						else
+						{
+							_logger.LogWarning("⚠ Failed to update CTS status via Service, but appointment still created");
+						}
+					}
+
+					// ✅ STEP 9: Trả về response
 					response.Success = true;
 					response.AppointmentId = createdAppointment.Id;
 
@@ -718,55 +744,223 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		{
 			try
 			{
-				_logger.LogInformation("CANCEL_APPOINTMENT: customerId={CustomerId}, staffId={StaffId}, date={Date}, serviceId={ServiceId}", 
+				_logger.LogInformation("CANCEL_APPOINTMENT: customerId={CustomerId}, staffId={StaffId}, date={Date}, serviceId={ServiceId}",
 					customerId, staffId, appointmentDate?.Date, serviceId);
 
 				var response = new AICancelAppointmentResponse();
 
-				// Tìm lịch hẹn cần hủy
+				// STEP 1: Kiểm tra bác sĩ tồn tại
+				var staff = await _staffRepository.GetById(staffId);
+				if (staff == null || staff.DeleteStatus || staff.IsDoctor != true)
+				{
+					response.Success = false;
+					response.Message = "Bác sĩ không tồn tại hoặc không hoạt động";
+					_logger.LogError("Staff not found or not a doctor: staffId={StaffId}", staffId);
+					return response;
+				}
+
+				// STEP 2: Kiểm tra khách hàng tồn tại
+				var customer = await _customerRepository.GetById(customerId);
+				if (customer == null || customer.DeleteStatus)
+				{
+					response.Success = false;
+					response.Message = "Khách hàng không tồn tại";
+					_logger.LogError("Customer not found: customerId={CustomerId}", customerId);
+					return response;
+				}
+
+				_logger.LogInformation("✓ Customer={CustomerName}, Doctor={DoctorName} verified",
+					customer.FullName, staff.FullName);
+
+				// STEP 3: Tìm lịch hẹn cần hủy
 				var appointments = await _appointmentRepository.FindByPredicate(x =>
 					x.CustomerId == customerId &&
 					x.StaffId == staffId &&
 					x.Status != (int)AppointmentStatus.Cancelled &&
 					!x.DeleteStatus);
 
-				// Lọc theo ngày nếu có
+				// STEP 4: Lọc theo ngày nếu có
 				if (appointmentDate.HasValue)
 				{
 					appointments = appointments
 						.Where(x => x.StartTime!.Value.Date == appointmentDate.Value.Date)
 						.ToList();
+					_logger.LogInformation("After date filter: {Count} appointments on {Date}",
+						appointments.Count(), appointmentDate.Value.Date.ToString("dd-MM-yyyy"));
 				}
 
-				// Lọc theo dịch vụ nếu có
+				// STEP 5: Lọc theo dịch vụ nếu có
 				if (serviceId.HasValue)
 				{
 					appointments = appointments
 						.Where(x => x.ServiceId == serviceId)
 						.ToList();
+					_logger.LogInformation("After service filter: {Count} appointments", appointments.Count());
 				}
 
+				// STEP 6: Kiểm tra có lịch hẹn để hủy không
 				if (!appointments.Any())
 				{
 					response.Success = false;
-					response.Message = "Không tìm thấy lịch hẹn để hủy";
+					response.Message = $"Không tìm thấy lịch hẹn của khách hàng với bác sĩ {staff.FullName} để hủy" +
+						(appointmentDate.HasValue ? $" vào ngày {appointmentDate:dd-MM-yyyy}" : "") +
+						(serviceId.HasValue ? $" cho dịch vụ này" : "");
+					_logger.LogWarning("No appointments found to cancel");
 					return response;
 				}
 
-				// Hủy tất cả lịch hẹn tìm được
+				// STEP 7: Hủy tất cả lịch hẹn tìm được
+				_logger.LogInformation("📅 Cancelling {Count} appointments", appointments.Count());
+
 				int cancelledCount = 0;
+				int cancelledAssignmentCount = 0;
+				var cancelledDetails = new List<string>();
+				var customerTreatmentSessionIds = new HashSet<int>(); 
+
 				foreach (var appointment in appointments)
 				{
-					appointment.Status = (int)AppointmentStatus.Cancelled;
-					appointment.DeleteStatus = true;
-					var updated = await _appointmentRepository.UpdateEntity(appointment);
-					if (updated)
-						cancelledCount++;
+					try
+					{
+						appointment.Status = (int)AppointmentStatus.Cancelled;
+
+						var updated = await _appointmentRepository.UpdateEntity(appointment);
+
+						if (updated)
+						{
+							cancelledCount++;
+							cancelledDetails.Add($"{appointment.StartTime:dd/MM/yyyy HH:mm}");
+							_logger.LogInformation("✓ Appointment cancelled: ID={AppointmentId}, StartTime={StartTime}",
+								appointment.Id, appointment.StartTime);
+
+							// ✅ STEP 7.1: Update status của AppointmentAssignments liên quan
+							var assignments = await _appointmentAssignmentRepository.FindByPredicate(x =>
+								x.AppointmentId == appointment.Id &&
+								!x.DeleteStatus);
+
+							foreach (var assignment in assignments)
+							{
+								try
+								{
+									// Cập nhật status thành Cancelled (4)
+									assignment.Status = (int)AppointmentStatus.Cancelled;
+
+									var assignmentUpdated = await _appointmentAssignmentRepository.UpdateEntity(assignment);
+									if (assignmentUpdated)
+									{
+										cancelledAssignmentCount++;
+										_logger.LogInformation("✓ AppointmentAssignment status updated: ID={AssignmentId}, Status=Cancelled",
+											assignment.Id);
+									}
+									else
+									{
+										_logger.LogWarning("⚠ Failed to update AppointmentAssignment status: ID={AssignmentId}",
+											assignment.Id);
+									}
+								}
+								catch (Exception ex)
+								{
+									_logger.LogError(ex, "Error updating AppointmentAssignment status: ID={AssignmentId}",
+										assignment.Id);
+								}
+							}
+
+							// ✅ STEP 7.2: Lưu SessionId để update status sau
+							if (appointment.CustomerTreatmentSessionId.HasValue)
+							{
+								customerTreatmentSessionIds.Add(appointment.CustomerTreatmentSessionId.Value);
+							}
+						}
+						else
+						{
+							_logger.LogWarning("⚠ Failed to cancel appointment: ID={AppointmentId}", appointment.Id);
+						}
+					}
+					catch (Exception ex)
+					{
+						_logger.LogError(ex, "Error cancelling appointment: ID={AppointmentId}", appointment.Id);
+					}
 				}
 
-				response.Success = true;
+				// 🆕 STEP 8: Cập nhật status của CustomerTreatmentSession và CustomerTreatmentPlan
+				int statusUpdateCount = 0;
+				if (customerTreatmentSessionIds.Count > 0)
+				{
+					_logger.LogInformation("📋 Updating status for {Count} CustomerTreatmentSession(s)", customerTreatmentSessionIds.Count);
+
+					foreach (var sessionId in customerTreatmentSessionIds)
+					{
+						try
+						{
+							// Lấy session để update status
+							var session = await _customerTreatmentSessionsRepository.GetById(sessionId);
+							if (session != null && !session.DeleteStatus)
+							{
+								// Cập nhật status thành "KhachHuy"
+								session.Status = "KhachHuy";
+								var statusUpdated = await _customerTreatmentSessionsRepository.UpdateEntity(session);
+
+								if (statusUpdated)
+								{
+									statusUpdateCount++;
+									_logger.LogInformation("✓ Session status updated: SessionId={SessionId}, Status=KhachHuy",
+										sessionId);
+
+									// Cập nhật CustomerTreatmentPlan nếu có
+									if (session.CustomerTreatmentPlanId.HasValue)
+									{
+										var plan = await _customerTreatmentPlansRepository.GetById(session.CustomerTreatmentPlanId.Value);
+										if (plan != null && !plan.DeleteStatus)
+										{
+											// Kiểm tra xem tất cả sessions của plan đã bị hủy chưa
+											var allSessions = await _customerTreatmentSessionsRepository.FindByPredicate(x =>
+												x.CustomerTreatmentPlanId == session.CustomerTreatmentPlanId.Value &&
+												!x.DeleteStatus);
+
+											// Nếu TẤT CẢ sessions = "KhachHuy" → Plan = "KhachHuy"
+											if (allSessions.All(s => s.Status == "KhachHuy"))
+											{
+												plan.Status = "KhachHuy";
+												var planUpdated = await _customerTreatmentPlansRepository.UpdateEntity(plan);
+
+												if (planUpdated)
+												{
+													_logger.LogInformation("✓ Plan status updated to KhachHuy: PlanId={PlanId}",
+														session.CustomerTreatmentPlanId.Value);
+												}
+											}
+											else
+											{
+												_logger.LogInformation("ℹ Plan has other active sessions, status not changed: PlanId={PlanId}",
+													session.CustomerTreatmentPlanId.Value);
+											}
+										}
+									}
+								}
+								else
+								{
+									_logger.LogWarning("⚠ Failed to update session status: SessionId={SessionId}", sessionId);
+								}
+							}
+						}
+						catch (Exception ex)
+						{
+							_logger.LogError(ex, "Error updating session status: SessionId={SessionId}", sessionId);
+						}
+					}
+				}
+
+				// 🆕 STEP 9: Trả về kết quả
+				response.Success = cancelledCount > 0;
 				response.CancelledCount = cancelledCount;
-				response.Message = $"Đã hủy {cancelledCount} lịch hẹn";
+				response.Message = cancelledCount > 0
+					? $"✅ Đã hủy {cancelledCount} lịch hẹn của khách hàng với bác sĩ {staff.FullName}" +
+					  (appointmentDate.HasValue ? $" vào ngày {appointmentDate:dd-MM-yyyy}" : "") +
+					  (cancelledDetails.Count > 0 ? $": {string.Join(", ", cancelledDetails)}" : "") +
+					  (cancelledAssignmentCount > 0 ? $" | Xóa {cancelledAssignmentCount} assignment(s)" : "") +
+					  (statusUpdateCount > 0 ? $" | Cập nhật {statusUpdateCount} session(s)" : "")
+					: "❌ Không thể hủy lịch hẹn";
+
+				_logger.LogInformation("✓ Cancel operation completed: {Message}", response.Message);
 
 				return response;
 			}
