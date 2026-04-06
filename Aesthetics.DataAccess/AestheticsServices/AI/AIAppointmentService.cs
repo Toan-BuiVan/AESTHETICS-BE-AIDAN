@@ -32,6 +32,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		private readonly IInvoiceRepository _invoiceRepository; 
 		private readonly IInvoiceDetailsRepository _invoiceDetailsRepository;
 		private readonly ICustomerTreatmentSessionsService _customerTreatmentSessionsService;
+		private readonly IClinicRepository _clinicRepository;
 
 		private const int	LUNCH_BREAK_START = 12;
 		private const int LUNCH_BREAK_END = 13;
@@ -55,7 +56,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			IInvoiceRepository invoiceRepository, 
 			IInvoiceDetailsRepository invoiceDetailsRepository,
 			ICustomerRepository customerRepository,
-			ICustomerTreatmentSessionsService customerTreatmentSessionsService) 
+			ICustomerTreatmentSessionsService customerTreatmentSessionsService,
+			IClinicRepository clinicRepository) 
 		{
 			_logger = logger;
 			_appointmentRepository = appointmentRepository;
@@ -73,6 +75,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			_invoiceDetailsRepository = invoiceDetailsRepository;
 			_customerRepository = customerRepository;
 			_customerTreatmentSessionsService = customerTreatmentSessionsService;
+			_clinicRepository = clinicRepository;
 		}
 
 		/// <summary>Bài 1-2: Lấy slot trống của bác sĩ trong một ngày</summary>
@@ -333,37 +336,78 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				response.ServiceName = service.ServiceName;
 				response.ServiceDescription = service.Description;
 
-				// Lấy tất cả bác sĩ từ ClinicStaff (không filter theo service vì ClinicStaff không có ServiceId)
-				// Thay vào đó, lấy tất cả bác sĩ và lọc những bác sĩ có lịch hẹn cho dịch vụ này
-				var allClinicStaffs = await _clinicStaffRepository.FindByPredicate(x =>
+				// 🆕 STEP 3: Vào Clinic - lấy clinicId dựa trên ServiceTypeId
+				var clinics = await _clinicRepository.FindByPredicate(x =>
+					x.ServiceTypeId == service.ServiceTypeId &&
 					!x.DeleteStatus);
 
-				var staffIds = allClinicStaffs.Select(x => x.StaffId).Distinct().ToList();
+				if (!clinics.Any())
+				{
+					response.Message = $"Không tìm thấy phòng khám nào cung cấp dịch vụ '{service.ServiceName}'";
+					response.Success = true;
+					response.Doctors = new List<AIServiceDoctor>();
+					return response;
+				}
+
+				var clinicIds = clinics.Select(x => x.Id).ToList();
+				_logger.LogInformation("✓ Found {Count} clinics for ServiceTypeId {ServiceTypeId}: {ClinicIds}",
+					clinicIds.Count, service.ServiceTypeId, string.Join(",", clinicIds));
+
+				var clinicStaffs = await _clinicStaffRepository.FindByPredicate(x =>
+					clinicIds.Contains(x.ClinicId ?? 0) &&
+					!x.DeleteStatus);
+
+				if (!clinicStaffs.Any())
+				{
+					response.Message = $"Không tìm thấy bác sĩ nào ở phòng khám cung cấp dịch vụ '{service.ServiceName}'";
+					response.Success = true;
+					response.Doctors = new List<AIServiceDoctor>();
+					return response;
+				}
+
+				var staffIds = clinicStaffs
+					.Where(x => x.StaffId.HasValue)
+					.Select(x => x.StaffId.Value)
+					.Distinct()
+					.ToList();
+
+				_logger.LogInformation("✓ Found {Count} doctors in clinics: {StaffIds}",
+					staffIds.Count, string.Join(",", staffIds));
 
 				// Lấy thông tin bác sĩ
 				var doctors = new List<AIServiceDoctor>();
 				foreach (var staffId in staffIds)
 				{
-					var staff = await _staffRepository.GetById(staffId ?? 0);
-					if (staff != null && staff.IsDoctor == true && !staff.DeleteStatus)
+					try
 					{
-						// Lấy số lượng lịch hẹn của bác sĩ cho dịch vụ này
-						var appointmentCount = (await _appointmentRepository.FindByPredicate(x =>
-							x.StaffId == staffId &&
-							x.ServiceId == serviceId &&
-							x.Status != (int)AppointmentStatus.Cancelled &&
-							!x.DeleteStatus)).Count();
-
-						doctors.Add(new AIServiceDoctor
+						var staff = await _staffRepository.GetById(staffId);
+						if (staff != null && staff.IsDoctor == true && !staff.DeleteStatus)
 						{
-							StaffId = staff.Id,
-							Name = staff.FullName,
-							Specialization = staff.Specialization,
-							Experience = staff.ExperienceYears ?? 0,
-							Degree = staff.Degree,
-							Rating = CalculateDoctorRating(appointmentCount),
-							AppointmentCount = appointmentCount
-						});
+							// ✅ Đếm số lịch hẹn của bác sĩ CHO DỊCH VỤ NÀY
+							var appointmentCount = (await _appointmentRepository.FindByPredicate(x =>
+								x.StaffId == staffId &&
+								x.ServiceId == serviceId &&
+								x.Status != (int)AppointmentStatus.Cancelled &&
+								!x.DeleteStatus)).Count();
+
+							_logger.LogInformation("Doctor {StaffId} ({Name}): {Count} appointments for service {ServiceId}",
+								staffId, staff.FullName, appointmentCount, serviceId);
+
+							doctors.Add(new AIServiceDoctor
+							{
+								StaffId = staff.Id,
+								Name = staff.FullName,
+								Specialization = staff.Specialization,
+								Experience = staff.ExperienceYears ?? 0,
+								Degree = staff.Degree,
+								Rating = CalculateDoctorRating(appointmentCount),
+								AppointmentCount = appointmentCount
+							});
+						}
+					}
+					catch (Exception ex)
+					{
+						_logger.LogError(ex, "Error processing doctor {StaffId}", staffId);
 					}
 				}
 
