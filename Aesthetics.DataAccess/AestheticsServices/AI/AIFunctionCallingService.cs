@@ -1099,7 +1099,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				var toolsList = await GetAvailableToolsAsync();
 				_logger.LogInformation("[STEP 2] Retrieved {ToolCount} tools", toolsList.Tools.Count);
 
-				// ✅ STEP 2: Build system prompt
+				// ✅ STEP 2: Build system promptXin lỗi,
 				string systemPrompt = BuildSystemPrompt();
 				_logger.LogInformation("[STEP 3] System prompt built");
 
@@ -1123,14 +1123,14 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				// Parse string response to AIFunctionCallResponse
 				var llmResponse = ParseLLMResponseString(llmResponseString);
 
-				if (llmResponse == null)
+				// 🆕 CHECK 1: Nếu LLM không trả về tool hợp lệ → fallback to chatbot
+				if (llmResponse == null || string.IsNullOrWhiteSpace(llmResponse.Tool))
 				{
-					return new
-					{
-						success = false,
-						message = "LLM did not return a valid response",
-						userMessage = "Xin lỗi, tôi không thể hiểu yêu cầu của bạn. Vui lòng thử lại."
-					};
+					_logger.LogWarning("[FALLBACK] No valid tool identified from LLM response - Entering chatbot mode");
+					return await GenerateChatbotResponse(
+						request.UserQuery,
+						"Không tìm thấy kết quả khách hàng mong muốn",
+						useLLM: true);
 				}
 
 				// ✅ Enrich response with IDs (mapping tên → ID)
@@ -1157,12 +1157,11 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				bool isValidParams = await ValidateToolParamsAsync(toolName, toolParams);
 				if (!isValidParams)
 				{
-					return new
-					{
-						success = false,
-						message = $"Invalid parameters for tool: {toolName}",
-						userMessage = "Xin lỗi, tôi không hiểu yêu cầu của bạn. Vui lòng cung cấp thông tin đầy đủ."
-					};
+					_logger.LogWarning("[FALLBACK] Invalid parameters for tool: {Tool}", toolName);
+					return await GenerateChatbotResponse(
+						request.UserQuery,
+						"Xin lỗi, tôi không hiểu yêu cầu của bạn. Vui lòng cung cấp thông tin đầy đủ.",
+						useLLM: false);
 				}
 
 				// ✅ STEP 6: Execute tool
@@ -1173,9 +1172,19 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				};
 
 				var toolResult = await ExecuteToolAsync(executeRequest);
-				_logger.LogInformation("[STEP 7] Tool executed successfully - Success: {Success}", toolResult.Success);
+				_logger.LogInformation("[STEP 7] Tool executed - Success: {Success}, Error: {Error}", toolResult.Success, toolResult.Error);
 
-				// ✅ STEP 7: Format final response
+				// 🆕 CHECK 2: Nếu tool không trả về kết quả hoặc data = null
+				if (!toolResult.Success || toolResult.Data == null)
+				{
+					_logger.LogWarning("[FALLBACK] Tool execution failed or returned no data - Error: {Error}", toolResult.Error);
+					return await GenerateChatbotResponse(
+						request.UserQuery,
+						toolResult.Error ?? "Không tìm thấy kết quả khách hàng mong muốn",
+						useLLM: false);
+				}
+
+				// ✅ STEP 7: Format final response (tool thành công)
 				var finalResponse = new
 				{
 					success = toolResult.Success,
@@ -1196,14 +1205,140 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "[ERROR] ProcessUserQueryAsync failed");
-				return new
-				{
-					success = false,
-					message = "Error processing your request",
-					error = ex.Message,
-					userMessage = "Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau."
-				};
+				return await GenerateChatbotResponse(
+					request.UserQuery,
+					"Xin lỗi, có lỗi xảy ra. Vui lòng thử lại sau.",
+					useLLM: false);
 			}
+		}
+
+		/// <summary>
+		/// 🆕 Generate chatbot response khi không có tool hoặc không có kết quả
+		/// Nếu là friendly question → trả lời ngay
+		/// Nếu cần trí tuệ nhân tạo → gọi LLM
+		/// </summary>
+		private async Task<dynamic> GenerateChatbotResponse(string userQuery, string errorMessage, bool useLLM = false)
+		{
+			_logger.LogInformation("[CHATBOT_MODE] Generating response for: {Query}, UseLLM: {UseLLM}", userQuery, useLLM);
+
+			// 🆕 Chatbot responses - nói chuyện thân thiện (không cần API)
+			var friendlyResponses = new Dictionary<string, string>
+		{
+			// Lời chào
+			{ "xin chào", "👋 Xin chào bạn! Mình là trợ lý AI của phòng khám thẩm mỹ. Mình có thể giúp bạn tìm kiếm dịch vụ, đặt lịch, hoặc trò chuyện cùng bạn. Bạn cần gì nào?" },
+			{ "hi", "👋 Hi bạn! Rất vui được gặp bạn. Mình có thể hỗ trợ bạn về các dịch vụ thẩm mỹ, đặt lịch khám, hoặc bất cứ điều gì bạn cần!" },
+			{ "hello", "👋 Hello! Welcome to our aesthetic clinic. How can I help you today?" },
+		
+			// Câu hỏi về mình
+			{ "bạn là ai", "🤖 Mình là một trợ lý AI được thiết kế để hỗ trợ bạn tìm hiểu về các dịch vụ thẩm mỹ, đặt lịch khám, và trò chuyện về các vấn đề sắc đẹp." },
+			{ "bạn tên gì", "👤 Mình là AI Assistant của phòng khám. Bạn có thể gọi mình là Bác sĩ AI hoặc chỉ gọi là AI!" },
+		
+			// Câu hỏi về khả năng
+			{ "bạn có thể làm gì", "✨ Mình có thể giúp bạn:\n• 🏥 Tìm kiếm dịch vụ thẩm mỹ\n• 👨‍⚕️ Xem danh sách các bác sĩ\n• 📅 Đặt lịch khám\n• ❌ Hủy lịch khám\n• 💄 Tư vấn sản phẩm chăm sóc\n• 💬 Trò chuyện với bạn về sắc đẹp" },
+		
+			// Lời cảm ơn
+			{ "cảm ơn", "😊 Không có gì! Mình luôn sẵn lòng giúp bạn. Nếu có bất cứ câu hỏi nào khác, đừng ngần ngại hỏi mình nhé!" },
+			{ "cảm ơn bạn", "🙌 Bạn thích rồi! Mình sẵn sàng giúp bạn bất cứ lúc nào." },
+			{ "thanks", "😊 You're welcome! Feel free to ask me anything." },
+		};
+
+			var lowerQuery = userQuery.ToLower().Trim();
+
+			// ✅ CHECK friendly questions TRƯỚC (không cần API)
+			foreach (var kvp in friendlyResponses)
+			{
+				if (lowerQuery.Contains(kvp.Key))
+				{
+					_logger.LogInformation("[CHATBOT_FRIENDLY] Matched friendly question: {Key}", kvp.Key);
+
+					// 🆕 Dùng dynamic object thay vì anonymous type
+					dynamic response = new System.Dynamic.ExpandoObject();
+					response.success = true;
+					response.message = kvp.Value;
+					response.data = null;
+					response.toolUsed = "chatbot_friendly";
+					response.conversationUpdate = new
+					{
+						role = "assistant",
+						content = kvp.Value
+					};
+					return response;
+				}
+			}
+
+			// 🆕 Nếu không phải friendly question và useLLM = true → gọi LLM để trả lời
+			if (useLLM)
+			{
+				try
+				{
+					_logger.LogInformation("[CHATBOT_LLM] Calling LLM for intelligent response");
+
+					var systemPrompt = @"Bạn là một trợ lý AI thân thiện của phòng khám thẩm mỹ.
+							
+
+							✅ HƯỚNG DẫN TRẢ LỜI:
+							1. Trả lời tất cả câu hỏi một cách tự nhiên, thân thiện, và hữu ích
+							2. Nếu câu hỏi hỏi ngày giờ → TRẢ LỜI CHÍNH XÁC dựa trên thông tin trên
+							3. Nếu câu hỏi liên quan đến thẩm mỹ/da → cung cấp lời khuyên tốt nhất
+							4. Nếu câu hỏi không liên quan đến phòng khám → vẫn trả lời bình thường + gợi ý dịch vụ
+							5. Giữ câu trả lời ngắn gọn (tối đa 200 từ)
+							6. KHÔNG bao giờ nói 'tôi chưa hiểu' - luôn có gắng trả lời hữu ích
+
+							📝 VÍ DỤ:
+							- Q: 'Hôm nay là ngày mấy?' → A: 'Hôm nay là {DateTime.Now:dddd, ngày dd/MM/yyyy} ({DateTime.Now:dd/MM/yyyy})'
+							- Q: 'Bây giờ mấy giờ?' → A: 'Bây giờ là {DateTime.Now:HH:mm}'
+							- Q: 'Da mụn nên chăm sóc như thế nào?' → A: '[Chi tiết về chăm sóc] Phòng khám chúng tôi có dịch vụ điều trị mụn hiệu quả!'
+							- Q: 'Việt Nam có bao nhiêu dân?' → A: '[Trả lời] Nếu bạn quan tâm đến chăm sóc da,...'
+
+							⚠️ KHÔNG ĐƯỢC:
+							- Nói 'Xin lỗi, tôi chưa hiểu'
+							- Từ chối trả lời
+							- Đưa ra thông tin không chính xác""";
+
+					var llmResponse = await _llmService.CallLLMAsync(
+						systemPrompt,
+						userQuery,
+						new List<LLMMessage>());
+
+					if (!string.IsNullOrWhiteSpace(llmResponse))
+					{
+						_logger.LogInformation("[CHATBOT_LLM] LLM response received");
+
+						// 🆕 Dùng dynamic object thay vì anonymous type
+						dynamic response = new System.Dynamic.ExpandoObject();
+						response.success = true;
+						response.message = llmResponse;
+						response.data = null;
+						response.toolUsed = "chatbot_llm";
+						response.conversationUpdate = new
+						{
+							role = "assistant",
+							content = llmResponse
+						};
+						return response;
+					}
+				}
+				catch (Exception ex)
+				{
+					_logger.LogError(ex, "[CHATBOT_LLM] Error calling LLM, falling back to default message");
+				}
+			}
+
+			// ❌ Nếu không trùng khớp friendly response và không dùng LLM → trả lỗi
+			_logger.LogInformation("[CHATBOT_FALLBACK] No friendly match and useLLM=false, returning error message");
+
+			// 🆕 Dùng dynamic object thay vì anonymous type
+			dynamic finalResponse = new System.Dynamic.ExpandoObject();
+			finalResponse.success = false;
+			finalResponse.message = errorMessage;
+			finalResponse.data = null;
+			finalResponse.toolUsed = null;
+			finalResponse.conversationUpdate = new
+			{
+				role = "assistant",
+				content = errorMessage
+			};
+			return finalResponse;
 		}
 
 		// ===== PRIVATE HELPER METHODS =====
@@ -1212,10 +1347,16 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		{
 			return @"Bạn là một trợ lý AI cho hệ thống quản lý phòng khám thẩm mỹ. 
 				Nhiệm vụ của bạn là:
-				1. Hiểu yêu cầu của người dùng bằng tiếng Việt
-				2. Xác định TOOL CHÍNH XÁC cần sử dụng
-				3. TRÍCH XUẤT tên bác sĩ, tên dịch vụ từ query (KHÔNG cần ID)
-				4. Trả về JSON response
+					1. Hiểu yêu cầu của người dùng bằng tiếng Việt
+					2. Xác định TOOL CHÍNH XÁC cần sử dụng
+					3. TRÍCH XUẤT tên bác sĩ, tên dịch vụ từ query (KHÔNG cần ID)
+					4. Trả về JSON response
+
+				⚠️ CRITICAL - NHỮNG GÌ KHÔNG PHẢI TOOL CALL:
+				- 'Cảm ơn', 'thanks', 'cảm ơn bạn' → KHÔNG gọi tool! Đây là lời cảm ơn - không cần xử lý
+				- 'Xin chào', 'hello', 'hi' → KHÔNG gọi tool! Đây là lời chào - không cần xử lý
+				- 'Bạn là ai?', 'Bạn tên gì?' → KHÔNG gọi tool! Đây là câu hỏi về mình - không cần xử lý
+				- Nếu query không liên quan đến dịch vụ/sản phẩm → KHÔNG gọi tool! Hãy trả về null
 
 				AVAILABLE TOOLS:
 				1. getDoctorAvailableSlots - Lấy lịch trống của bác sĩ trong một ngày

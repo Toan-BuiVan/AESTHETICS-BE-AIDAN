@@ -831,12 +831,7 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-		private List<AvailableTimeSlot> CalculateAvailableTimeSlots(
-			List<AppointmentEntity> appointments,
-			List<AppointmentTimeLockEntity> timeLocks,
-			int serviceDuration,
-			int limit,
-			DateTime workDate)
+		private List<AvailableTimeSlot> CalculateAvailableTimeSlots(List<AppointmentEntity> appointments, List<AppointmentTimeLockEntity> timeLocks, int serviceDuration, int limit, DateTime workDate)
 		{
 			var availableSlots = new List<AvailableTimeSlot>();
 			int workStartHour = 8;
@@ -1184,11 +1179,11 @@ namespace Aesthetics.Data.AestheticsServices
 		}
 
 		private async Task<int?> CreateInvoiceForAppointmentAsync(
-			CreateAppointment appointment,
-			ServiceEntity service,
-			int appointmentId,
-			int? treatmentPlanId = null,
-			int? treatmentSessionId = null) 
+		CreateAppointment appointment,
+		ServiceEntity service,
+		int appointmentId,
+		int? treatmentPlanId = null,
+		int? treatmentSessionId = null)
 		{
 			try
 			{
@@ -1241,7 +1236,8 @@ namespace Aesthetics.Data.AestheticsServices
 					? finalPrice
 					: Math.Min(appointment.PaidAmount, finalPrice);
 
-				string invoiceStatus = GetInvoiceStatus(paidAmount, finalPrice);
+				// ✅ BỔSUNG: Nếu TypeInvoice là PayInAdvance (1) hoặc PartialPayment (2), status là "ThanhToanMotPhan"
+				string invoiceStatus = GetInvoiceStatusByTypeInvoice(appointment.TypeInvoice, paidAmount, finalPrice);
 
 				// ✅ BỔSUNG: Lấy TreatmentSessionId từ CustomerTreatmentSession
 				int? treatmentSessionIdFromCts = null;
@@ -1260,11 +1256,11 @@ namespace Aesthetics.Data.AestheticsServices
 					StaffId = appointment.StaffId.Value,
 					ServiceId = service.Id,
 					VoucherId = appliedVoucherId,
-					TreatmentPlanId = treatmentPlanId,        // ✅ BỔSUNG
-					TreatmentSessionId = treatmentSessionId ?? treatmentSessionIdFromCts,  // ✅ BỔSUNG
-					TotalMoney = servicePrice,        // ✅ Giá gốc
-					DiscountValue = discountValue,     // ✅ Số tiền giảm
-					FinalPrice = finalPrice,           // ✅ Giá sau giảm
+					TreatmentPlanId = treatmentPlanId,       
+					TreatmentSessionId = treatmentSessionId ?? treatmentSessionIdFromCts,  
+					TotalMoney = servicePrice,        
+					DiscountValue = discountValue,    
+					FinalPrice = finalPrice,           
 					PaidAmount = paidAmount,
 					OutstandingBalance = finalPrice - paidAmount,
 					DateCreated = DateTime.UtcNow,
@@ -1285,11 +1281,11 @@ namespace Aesthetics.Data.AestheticsServices
 					ServiceId = service.Id,
 					Price = servicePrice,
 					Quantity = 1,
-					TreatmentPlanId = treatmentPlanId,        // ✅ BỔSUNG
-					TreatmentSessionId = treatmentSessionId ?? treatmentSessionIdFromCts,  // ✅ BỔSUNG
-					TotalMoney = servicePrice,        // ✅ Giá gốc
-					DiscountValue = discountValue,     // ✅ Số tiền giảm
-					FinalPrice = finalPrice,           // ✅ Giá sau giảm
+					TreatmentPlanId = treatmentPlanId,       
+					TreatmentSessionId = treatmentSessionId ?? treatmentSessionIdFromCts,  
+					TotalMoney = servicePrice,        
+					DiscountValue = discountValue,    
+					FinalPrice = finalPrice,           
 					Status = invoiceStatus,
 					Type = "DichVu",
 					StatusComment = false,
@@ -1304,6 +1300,19 @@ namespace Aesthetics.Data.AestheticsServices
 				_logger.LogError(ex, "CREATE_INVOICE_EXCEPTION: Exception in CreateInvoiceForAppointmentAsync");
 				return null;
 			}
+		}
+
+		private string GetInvoiceStatusByTypeInvoice(EnumTreatmentPlans? typeInvoice, decimal paidAmount, decimal totalAmount)
+		{
+			// ✅ Nếu TypeInvoice là PayInAdvance (1) hoặc PartialPayment (2), trả về "ThanhToanMotPhan"
+			if (typeInvoice == EnumTreatmentPlans.PayInAdvance || typeInvoice == EnumTreatmentPlans.PartialPayment)
+			{
+				_logger.LogInformation("INVOICE_STATUS_OVERRIDE: TypeInvoice={TypeInvoice}, Status set to 'ThanhToanMotPhan'", typeInvoice);
+				return "ThanhToanMotPhan";
+			}
+
+			// ✅ Ngược lại, sử dụng logic cũ
+			return GetInvoiceStatus(paidAmount, totalAmount);
 		}
 
 		private string GetInvoiceStatus(decimal paidAmount, decimal totalAmount)
@@ -1511,12 +1520,7 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-
-		private async Task<bool> CheckConflictWithExistingAppointments(
-			int staffId,
-			DateTime appointmentTime,
-			int serviceDuration,
-			DateTime appointmentDate)
+		private async Task<bool> CheckConflictWithExistingAppointments(int staffId,DateTime appointmentTime,int serviceDuration,DateTime appointmentDate)
 		{
 			try
 			{
@@ -1576,8 +1580,6 @@ namespace Aesthetics.Data.AestheticsServices
 				return false;
 			}
 		}
-
-
 
 		/// <summary>
 		/// CẬP NHẬT TRẠNG THÁI APPOINTMENT, CUSTOMERTREATMENTSESSION VÀ CUSTOMERTREATMENTPLAN
