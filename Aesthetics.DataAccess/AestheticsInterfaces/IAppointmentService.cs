@@ -11,7 +11,7 @@ namespace Aesthetics.Data.AestheticsInterfaces
 {
     public interface IAppointmentService
     {
-		Task<bool> create(CreateAppointment appointment);
+		Task<CreateAppointmentResponseModel> create(CreateAppointment appointment);
 
 		Task<bool> delete(DeleteAppointment appointment);
 
