@@ -9,25 +9,41 @@ using Aesthetics.Data.AestheticsServices.AI;
 using Aesthetics.Data.AestheticsServices.CommonService;
 using Aesthetics.Data.AestheticsServices.EmailService;
 using Aesthetics.Data.AestheticsServices.TokenService;
-using Aesthetics.Data.BackgroundServices;
 using Aesthetics.Data.RepositoryInterfaces;
 using Aesthetics.Data.RepositoryServices;
+using ASP_NetCore_Aesthetics.Services.VnPaySevices;
+using ASP_NetCore_Aesthetics.Services.MomoServices;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Aesthetics.DTO.NetCore.DataObject.Model.Momo;
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
+
+// ===== CORS Configuration =====
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("AllowAll", policy =>
+    {
+        policy.WithOrigins("http://localhost:4200", "http://localhost:3000", "https://yourdomain.com", "https://buitoan.somee.com")
+              .AllowAnyMethod()
+              .AllowAnyHeader()
+              .AllowCredentials();
+    });
+});
+
 builder.Services.AddDbContext<AestheticsDbContext>(options =>
-			   options.UseSqlServer(configuration.GetConnectionString("aesthetics")));
+    options.UseSqlServer(configuration.GetConnectionString("aesthetics")));
+
 builder.Services.AddHttpContextAccessor();
+
 // Add services to the container.
 
 builder.Services.AddControllers();
-// Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Repository
+// ===== Repository Registrations =====
 builder.Services.AddScoped<ISupplierRepository, SupplierRepository>();
 builder.Services.AddScoped<IProductRepository, ProductRepository>();
 builder.Services.AddScoped<IServiceRepository, ServiceRepository>();
@@ -59,7 +75,7 @@ builder.Services.AddScoped<IVoucherRepository, VoucherRepository>();
 builder.Services.AddScoped<IWalletRepository, WalletRepository>();
 builder.Services.AddScoped<IAccountSessionsRepository, AccountSessionsRepository>();
 
-// Service
+// ===== Service Registrations =====
 builder.Services.AddScoped<ICommonService, CommonService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddScoped<IAccountService, AccountService>();
@@ -93,40 +109,35 @@ builder.Services.AddScoped<IWalletService, WalletService>();
 builder.Services.AddScoped<IStaffService, StaffService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IAccountSessionsService, AccountSessionsService>();
+builder.Services.AddScoped<IInvoicePaymentService, InvoicePaymentService>();
+
+// ===== Payment Services =====
+builder.Services.AddScoped<IVnPayService, VnPayService>();
+builder.Services.AddScoped<IMomoService, MomoService>();
+builder.Services.Configure<MomoOptionModel>(configuration.GetSection("MomoAPI"));
+
 builder.Services.AddHttpClient<ILLMService, LLMService>()
 	.ConfigureHttpClient(client =>
 	{
 		client.Timeout = TimeSpan.FromMinutes(2);
 		client.DefaultRequestHeaders.Add("User-Agent", "Aesthetics-AI-Client");
 	});
-// → DI container tự động inject HttpClient vào LLMService
 
 // ===== AI Services =====
 builder.Services.AddScoped<IAIAppointmentService, AIAppointmentService>();
 builder.Services.AddScoped<IAIAnalyticsService, AIAnalyticsService>();
 builder.Services.AddScoped<IAICartService, AICartService>();
 builder.Services.AddScoped<IAIFunctionCallingService, AIFunctionCallingService>();
-
-builder.Services.AddHostedService<Aesthetics.Data.AestheticsServices.EmailService.AppointmentReminderBackgroundService>();
 builder.Services.AddDistributedMemoryCache();
+
 // Background Service
+builder.Services.AddHostedService<AppointmentReminderBackgroundService>();
 builder.Services.AddHostedService<InventoryAlertBackgroundService>();
 
 // Additional services you might need
 builder.Services.AddScoped<IPasswordHasher<object>, PasswordHasher<object>>();
 builder.Services.AddMemoryCache();
 builder.Services.AddLogging();
-
-// CORS - moved BEFORE builder.Build()
-builder.Services.AddCors(options =>
-{
-	options.AddPolicy("AllowAll", builder =>
-	{
-		builder.AllowAnyOrigin()
-			   .AllowAnyMethod()
-			   .AllowAnyHeader();
-	});
-});
 
 // If you need authentication/authorization - moved BEFORE builder.Build()
 //builder.Services.AddAuthentication("Bearer")
@@ -136,6 +147,9 @@ builder.Services.AddCors(options =>
 //	});
 
 var app = builder.Build();
+
+// ===== Middleware Configuration =====
+app.UseCors("AllowAll");
 
 if (app.Environment.IsDevelopment())
 {
@@ -149,9 +163,8 @@ app.UseStaticFiles();
 
 app.UseRouting();
 
-app.UseCors("AllowAll");
-
 app.UseAuthentication();
+
 app.UseAuthorization();
 
 app.MapControllers();
