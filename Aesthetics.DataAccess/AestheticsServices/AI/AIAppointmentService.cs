@@ -685,16 +685,18 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					PaymentMethod = "TienMat"
 				};
 
-				var isBooked = await _appointmentService.create(createAppointmentRequest);
-				if (!isBooked)
+				var appointmentResponse = await _appointmentService.create(createAppointmentRequest);
+				if (appointmentResponse == null || appointmentResponse.AppointmentId <= 0)
 				{
 					response.Success = false;
-					response.Message = "Không thể đặt lịch. Vui lòng kiểm tra thông tin";
-					_logger.LogError("❌ Failed to create appointment");
+					response.Message = appointmentResponse?.Message ?? "Không thể đặt lịch. Vui lòng kiểm tra thông tin";
+					_logger.LogError("❌ Failed to create appointment - {Message}", response.Message);
 					return response;
 				}
 
-				_logger.LogInformation("✓ Appointment created successfully");
+				_logger.LogInformation("✓ Appointment created successfully - AppointmentId: {AppointmentId}, InvoiceId: {InvoiceId}",
+					appointmentResponse.AppointmentId, appointmentResponse.InvoiceId);
+
 
 				// ✅ STEP 6: Lấy thông tin Appointment vừa tạo
 				var appointments = await _appointmentRepository.FindByPredicate(x =>

@@ -28,6 +28,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		private readonly ITreatmentPlanRepository _treatmentPlanRepository;
 		private readonly ITreatmentSessionRepository _treatmentSessionRepository;
 		private readonly IAppointmentRepositoty _appointmentRepository;
+		private readonly IProductRepository _productRepository;
 		private readonly ICustomerTreatmentPlansRepository _customerTreatmentPlansRepository;
 		private readonly ICustomerTreatmentSessionsRepository _customerTreatmentSessionsRepository;
 		private readonly IAppointmentAssignmentRepository _appointmentAssignmentRepository;
@@ -45,7 +46,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			IAppointmentRepositoty appointmentRepository,
 			ICustomerTreatmentPlansRepository customerTreatmentPlansRepository,
 			ICustomerTreatmentSessionsRepository customerTreatmentSessionsRepository,
-			IAppointmentAssignmentRepository appointmentAssignmentRepository)  
+			IAppointmentAssignmentRepository appointmentAssignmentRepository,
+			IProductRepository productRepository)  
 		{
 			_logger = logger;
 			_aiAppointmentService = aiAppointmentService;
@@ -53,6 +55,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			_aiCartService = aiCartService;
 			_llmService = llmService;
 			_staffRepository = staffRepository;
+			_productRepository = productRepository;
 			_serviceRepository = serviceRepository;
 			_treatmentPlanRepository = treatmentPlanRepository;  
 			_treatmentSessionRepository = treatmentSessionRepository;
@@ -1223,24 +1226,24 @@ namespace Aesthetics.Data.AestheticsServices.AI
 
 			// 🆕 Chatbot responses - nói chuyện thân thiện (không cần API)
 			var friendlyResponses = new Dictionary<string, string>
-		{
-			// Lời chào
-			{ "xin chào", "👋 Xin chào bạn! Mình là trợ lý AI của phòng khám thẩm mỹ. Mình có thể giúp bạn tìm kiếm dịch vụ, đặt lịch, hoặc trò chuyện cùng bạn. Bạn cần gì nào?" },
-			{ "hi", "👋 Hi bạn! Rất vui được gặp bạn. Mình có thể hỗ trợ bạn về các dịch vụ thẩm mỹ, đặt lịch khám, hoặc bất cứ điều gì bạn cần!" },
-			{ "hello", "👋 Hello! Welcome to our aesthetic clinic. How can I help you today?" },
+			{
+				// Lời chào
+				{ "xin chào", "👋 Xin chào bạn! Mình là trợ lý AI của phòng khám thẩm mỹ. Mình có thể giúp bạn tìm kiếm dịch vụ, đặt lịch, hoặc trò chuyện cùng bạn. Bạn cần gì nào?" },
+				{ "hi", "👋 Hi bạn! Rất vui được gặp bạn. Mình có thể hỗ trợ bạn về các dịch vụ thẩm mỹ, đặt lịch khám, hoặc bất cứ điều gì bạn cần!" },
+				{ "hello", "👋 Hello! Welcome to our aesthetic clinic. How can I help you today?" },
 		
-			// Câu hỏi về mình
-			{ "bạn là ai", "🤖 Mình là một trợ lý AI được thiết kế để hỗ trợ bạn tìm hiểu về các dịch vụ thẩm mỹ, đặt lịch khám, và trò chuyện về các vấn đề sắc đẹp." },
-			{ "bạn tên gì", "👤 Mình là AI Assistant của phòng khám. Bạn có thể gọi mình là Bác sĩ AI hoặc chỉ gọi là AI!" },
+				// Câu hỏi về mình
+				{ "bạn là ai", "🤖 Mình là một trợ lý AI được thiết kế để hỗ trợ bạn tìm hiểu về các dịch vụ thẩm mỹ, đặt lịch khám, và trò chuyện về các vấn đề sắc đẹp." },
+				{ "bạn tên gì", "👤 Mình là AI Assistant của phòng khám. Bạn có thể gọi mình là Bác sĩ AI hoặc chỉ gọi là AI!" },
 		
-			// Câu hỏi về khả năng
-			{ "bạn có thể làm gì", "✨ Mình có thể giúp bạn:\n• 🏥 Tìm kiếm dịch vụ thẩm mỹ\n• 👨‍⚕️ Xem danh sách các bác sĩ\n• 📅 Đặt lịch khám\n• ❌ Hủy lịch khám\n• 💄 Tư vấn sản phẩm chăm sóc\n• 💬 Trò chuyện với bạn về sắc đẹp" },
+				// Câu hỏi về khả năng
+				{ "bạn có thể làm gì", "✨ Mình có thể giúp bạn:\n• 🏥 Tìm kiếm dịch vụ thẩm mỹ\n• 👨‍⚕️ Xem danh sách các bác sĩ\n• 📅 Đặt lịch khám\n• ❌ Hủy lịch khám\n• 💄 Tư vấn sản phẩm chăm sóc\n• 💬 Trò chuyện với bạn về sắc đẹp" },
 		
-			// Lời cảm ơn
-			{ "cảm ơn", "😊 Không có gì! Mình luôn sẵn lòng giúp bạn. Nếu có bất cứ câu hỏi nào khác, đừng ngần ngại hỏi mình nhé!" },
-			{ "cảm ơn bạn", "🙌 Bạn thích rồi! Mình sẵn sàng giúp bạn bất cứ lúc nào." },
-			{ "thanks", "😊 You're welcome! Feel free to ask me anything." },
-		};
+				// Lời cảm ơn
+				{ "cảm ơn", "😊 Không có gì! Mình luôn sẵn lòng giúp bạn. Nếu có bất cứ câu hỏi nào khác, đừng ngần ngại hỏi mình nhé!" },
+				{ "cảm ơn bạn", "🙌 Bạn thích rồi! Mình sẵn sàng giúp bạn bất cứ lúc nào." },
+				{ "thanks", "😊 You're welcome! Feel free to ask me anything." },
+			};
 
 			var lowerQuery = userQuery.ToLower().Trim();
 
@@ -1327,16 +1330,20 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			// ❌ Nếu không trùng khớp friendly response và không dùng LLM → trả lỗi
 			_logger.LogInformation("[CHATBOT_FALLBACK] No friendly match and useLLM=false, returning error message");
 
+			// ✅ HOTLINE support khi AI không trả lời được
+			string hotlineSupport = "☎️ Để được tư vấn trực tiếp, vui lòng liên hệ hotline: <strong>0383102388</strong>";
+			string finalMessage = $"{errorMessage}\n\n{hotlineSupport}";
+
 			// 🆕 Dùng dynamic object thay vì anonymous type
 			dynamic finalResponse = new System.Dynamic.ExpandoObject();
 			finalResponse.success = false;
-			finalResponse.message = errorMessage;
+			finalResponse.message = finalMessage;
 			finalResponse.data = null;
 			finalResponse.toolUsed = null;
 			finalResponse.conversationUpdate = new
 			{
 				role = "assistant",
-				content = errorMessage
+				content = finalMessage
 			};
 			return finalResponse;
 		}
@@ -1356,7 +1363,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				- 'Cảm ơn', 'thanks', 'cảm ơn bạn' → KHÔNG gọi tool! Đây là lời cảm ơn - không cần xử lý
 				- 'Xin chào', 'hello', 'hi' → KHÔNG gọi tool! Đây là lời chào - không cần xử lý
 				- 'Bạn là ai?', 'Bạn tên gì?' → KHÔNG gọi tool! Đây là câu hỏi về mình - không cần xử lý
-				- Nếu query không liên quan đến dịch vụ/sản phẩm → KHÔNG gọi tool! Hãy trả về null
+				- Nếu query không liên quan đến dịch vụ/sản phẩm → KHÔNG gọi tool! Hãy trả về ""Vui lòng liên hệ Hotline 0383102388 để được hỗ trợ. Trân trọng cảm ơn!""
 
 				AVAILABLE TOOLS:
 				1. getDoctorAvailableSlots - Lấy lịch trống của bác sĩ trong một ngày
@@ -1386,14 +1393,16 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				9. getTopSellingProducts - ⭐ Top sản phẩm bán chạy nhất (CÓ THỂ GIỚI HẠN SỐ LƯỢNG)
 				   Params: {""limit"": ""int (optional) - Số lượng sản phẩm""}
 
-				10. getProductDetail - Chi tiết sản phẩm
-					Params: {""productId"": int}
+				10. getProductDetail - Chi tiết sản phẩm + TÁC DỤNG
+                    Params: {""productId"": int}
+                    ⭐ PHẢI DÙNG khi query hỏi: 'tác dụng của sản phẩm A', 'sản phẩm A có tác dụng gì', 'sản phẩm A giúp gì'
 
 				11. getProductsByPriceRange - Sản phẩm theo khoảng giá
 					Params: {""minPrice"": decimal, ""maxPrice"": decimal}
 
-				12. addProductToCart - Thêm sản phẩm vào giỏ hàng
-					Params: {""productId"": int, ""quantity"": int}
+				12. addProductToCart - ⭐⭐⭐ THÊM SẢN PHẨM VÀO GIỎ HÀNG
+					Params: {""productId"": int, ""quantity"": int (optional, default: 1)}
+					⭐ PHẢI DÙNG khi query có: 'thêm sản phẩm X vào giỏ hàng', 'cho tôi thêm sản phẩm X', 'mua sản phẩm X'
 
 				13. removeProductFromCart - Xóa sản phẩm khỏi giỏ hàng
 					Params: {""productId"": int}
@@ -1474,6 +1483,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				✅ TRÍCH XUẤT TỲ QUERY:
 					- Tên bác sĩ ""Toan"" → Truyền như là ""Toan"" (Tên bác sĩ hoặc ID bác sĩ)
 					- Tên dịch vụ ""Trị mụn"" → Truyền như là ""Trị mụn""
+					- Tên sản phẩm ""Kem Dưỡng Da"" → Truyền như là ""Kem Dưỡng Da"" (KHÔNG cần ID, sẽ tìm tự động)
 					- Ngày ""08-04-2026"" → Đổi thành ""2026-04-08"" (YYYY-MM-DD)
 					- Ngày ""15/4"" → Đổi thành ""2026-04-15""
 					- Giờ ""8h30 sáng"" → Đổi thành ""08:30"" (HH:mm)
@@ -1607,6 +1617,17 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				  ""reasoning"": ""Người dùng muốn hủy lịch buổi 2 cụ thể của liệu trình trẻ hóa da vào ngày 25-04-2026 với bác sĩ Ha""
 				}
 
+				📍 EXAMPLE 10 - Tác dụng sản phẩm:
+                User: 'Tác dụng của Kem Dưỡng Da là gì?'
+                Response:
+                {
+                  ""tool"": ""getProductDetail"",
+                  ""params"": {
+                    ""productId"": ""Kem Dưỡng Da""
+                  },
+                  ""reasoning"": ""Người dùng hỏi tác dụng của sản phẩm Kem Dưỡng Da → cần lấy chi tiết sản phẩm bao gồm mô tả, tác dụng, số người sử dụng, kiểm định Bộ Y tế""
+                }
+
 				Current Date: " + DateTime.UtcNow.ToString("yyyy-MM-dd") + @"
 				Current Time: " + DateTime.UtcNow.ToString("HH:mm:ss");
 		}
@@ -1729,6 +1750,9 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		/// <summary>
 		/// Tìm kiếm và thay thế tên bác sĩ/dịch vụ/liệu trình thành ID trong LLM response
 		/// </summary>
+		/// <summary>
+		/// Tìm kiếm và thay thế tên bác sĩ/dịch vụ/liệu trình/sản phẩm thành ID trong LLM response
+		/// </summary>
 		private async Task<AIFunctionCallResponse> EnrichLLMResponseWithIds(AIFunctionCallResponse llmResponse)
 		{
 			try
@@ -1801,6 +1825,28 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					}
 				}
 
+				// 🆕 Nếu có productId mà là text → tìm kiếm
+				if (enrichedParams.ContainsKey("productId") && enrichedParams["productId"] != null)
+				{
+					var productIdValue = enrichedParams["productId"].ToString();
+					if (!int.TryParse(productIdValue, out _))
+					{
+						// Là tên sản phẩm, cần tìm ID
+						_logger.LogInformation("🔍 Looking for product: '{Name}'", productIdValue);
+						var productId = await FindProductIdByNameAsync(productIdValue);
+						if (productId.HasValue)
+						{
+							enrichedParams["productId"] = productId.Value;
+							_logger.LogInformation("✓ Mapped product name '{Name}' to productId: {ProductId}", productIdValue, productId.Value);
+						}
+						else
+						{
+							_logger.LogWarning("⚠ Could not find product ID for name: {Name}", productIdValue);
+							await LogAvailableProducts(productIdValue);
+						}
+					}
+				}
+
 				return new AIFunctionCallResponse
 				{
 					Tool = llmResponse.Tool,
@@ -1815,6 +1861,77 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			}
 		}
 
+		// 🆕 Method tìm productId theo tên
+		private async Task<int?> FindProductIdByNameAsync(string productName)
+		{
+			try
+			{
+				if (string.IsNullOrWhiteSpace(productName))
+					return null;
+
+				var products = await _productRepository.FindByPredicate(x =>
+					!x.DeleteStatus);
+
+				_logger.LogInformation("📦 Total active products: {Count}", products.Count());
+
+				// Tìm kiếm chính xác
+				var exactMatch = products.FirstOrDefault(p =>
+					p.ProductName?.Equals(productName, StringComparison.OrdinalIgnoreCase) == true);
+
+				if (exactMatch != null)
+				{
+					_logger.LogInformation("✓ Exact match found: '{Name}' → ID: {Id}", exactMatch.ProductName, exactMatch.Id);
+					return exactMatch.Id;
+				}
+
+				// Tìm kiếm gần đúng (contains)
+				var fuzzyMatch = products.FirstOrDefault(p =>
+					p.ProductName?.Contains(productName, StringComparison.OrdinalIgnoreCase) == true);
+
+				if (fuzzyMatch != null)
+				{
+					_logger.LogInformation("✓ Fuzzy match found: '{Name}' contains '{Search}' → ID: {Id}", fuzzyMatch.ProductName, productName, fuzzyMatch.Id);
+					return fuzzyMatch.Id;
+				}
+
+				_logger.LogWarning("❌ No match found for product: '{Name}'", productName);
+				return null;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error finding product ID for name: {Name}", productName);
+				return null;
+			}
+		}
+
+		// 🆕 Helper method để log tất cả available products
+		private async Task LogAvailableProducts(string searchedName)
+		{
+			try
+			{
+				var products = await _productRepository.FindByPredicate(x => !x.DeleteStatus);
+				if (!products.Any())
+				{
+					_logger.LogWarning("No active products found in database");
+					return;
+				}
+
+				_logger.LogInformation("📦 Available Products (searched for: '{Search}'):", searchedName);
+				foreach (var product in products.Take(10))
+				{
+					_logger.LogInformation("   - ID: {Id}, Name: '{Name}'", product.Id, product.ProductName);
+				}
+
+				if (products.Count() > 10)
+				{
+					_logger.LogInformation("   ... và {Count} sản phẩm khác", products.Count() - 10);
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error logging available products");
+			}
+		}
 		private async Task<int?> FindStaffIdByNameAsync(string staffName)
 		{
 			try

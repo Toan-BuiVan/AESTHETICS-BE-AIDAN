@@ -1,6 +1,8 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces.AI;
 using Aesthetics.Data.RepositoryInterfaces;
 using Aesthetics.Data.RepositoryServices;
+using Aesthetics.Entities.Entities;
+using Aesthetics.Entities.Models.RequestModel.AI;
 using Aesthetics.Entities.Models.ResponseModel.AI;
 using Microsoft.Extensions.Logging;
 using System;
@@ -21,6 +23,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		private readonly ICartProductRepository _cartProductRepository;
 		private readonly IStaffRepository _staffRepository;
 		private readonly ITreatmentSessionRepository _treatmentSessionRepository;
+		private readonly ILLMService _llmService;
 
 		public AIAnalyticsService(
 			ILogger<AIAnalyticsService> logger,
@@ -31,7 +34,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			IInvoiceDetailsRepository invoiceDetailsRepository,
 			ICartProductRepository cartProductRepository,
 			IStaffRepository staffRepository,
-			ITreatmentSessionRepository treatmentSessionRepository)
+			ITreatmentSessionRepository treatmentSessionRepository,
+			ILLMService llmService)
 		{
 			_logger = logger;
 			_serviceRepository = serviceRepository;
@@ -42,6 +46,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			_cartProductRepository = cartProductRepository;
 			_staffRepository = staffRepository;
 			_treatmentSessionRepository = treatmentSessionRepository;
+			_llmService = llmService;
 		}
 
 		/// <summary>Bài 4: Lấy dịch vụ nhiều người dùng nhất</summary>
@@ -362,7 +367,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					return response;
 				}
 
-				// Đếm số người sử dụng
+				// ✅ Đếm số người sử dụng
 				var usageCount = (await _invoiceDetailsRepository.FindByPredicate(x =>
 					x.ServiceId == productId &&
 					!x.DeleteStatus)).Count();
@@ -373,6 +378,10 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				response.Price = product.SellingPrice ?? 0;
 				response.Quantity = product.Quantity;
 				response.UserCount = usageCount;
+
+				// 🆕 Thêm thông tin tác dụng sản phẩm (từ DB hoặc lấy trên mạng)
+				response.Benefits = await GetProductBenefitsAsync(product);
+				response.ImprovementDays = await EstimateImprovementDaysAsync(product);
 				response.Success = true;
 				response.Message = $"Chi tiết sản phẩm {product.ProductName}";
 
@@ -386,6 +395,114 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					Success = false,
 					Message = $"Lỗi: {ex.Message}"
 				};
+			}
+		}
+
+		/// <summary>🆕 Lấy tác dụng sản phẩm từ DB, nếu không có thì gọi LLM để lấy từ mạng</summary>
+		private async Task<string> GetProductBenefitsAsync(ProductEntity product)
+		{
+			try
+			{
+				// ✅ BƯỚC 1: Kiểm tra Description trong DB
+				if (!string.IsNullOrWhiteSpace(product.Description))
+				{
+					_logger.LogInformation("📌 Using benefits from database for product: {ProductName}", product.ProductName);
+					return product.Description;
+				}
+
+				// ✅ BƯỚC 2: DB không có → gọi LLM để tìm kiếm từ mạng
+				_logger.LogInformation("🔍 Description not found in DB, calling LLM to fetch from internet: {ProductName}", product.ProductName);
+
+				var llmPrompt = $@"Hãy tìm kiếm và mô tả chi tiết tác dụng của sản phẩm: {product.ProductName}
+
+Yêu cầu:
+1. Mô tả tác dụng chính của sản phẩm (3-5 điểm)
+2. Thành phần hoạt chất chính (nếu có)
+3. Đối tượng sử dụng phù hợp
+4. Cách sử dụng
+5. Lưu ý khi sử dụng
+
+Trả lời bằng tiếng Việt, chi tiết, dễ hiểu và có cấu trúc rõ ràng.";
+
+				var llmResponse = await _llmService.CallLLMAsync(
+					"Bạn là một chuyên gia tìm kiếm thông tin sản phẩm trên internet. Hãy cung cấp thông tin chi tiết, chính xác, đáng tin cậy và hữu ích. Tìm kiếm từ các nguồn đáng tin cậy như các website thương mại điện tử, blog sản phẩm, bài viết chuyên ngành.",
+					llmPrompt,
+					new List<LLMMessage>());
+
+				if (!string.IsNullOrWhiteSpace(llmResponse))
+				{
+					_logger.LogInformation("✅ Got benefits from LLM for product: {ProductName}", product.ProductName);
+					return llmResponse;
+				}
+
+				// ✅ BƯỚC 3: Fallback - nếu LLM trả rỗng
+				_logger.LogWarning("⚠️ LLM returned empty response for: {ProductName}", product.ProductName);
+				return $"Chưa cập nhật thông tin chi tiết về tác dụng của sản phẩm {product.ProductName}. Vui lòng liên hệ: 0383102388";
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error getting product benefits from LLM for product: {ProductName}", product.ProductName);
+				return $"Có lỗi khi tìm kiếm thông tin sản phẩm {product.ProductName}. Vui lòng liên hệ: 0383102388";
+			}
+		}
+
+		/// <summary>🆕 Ước tính thời gian cải thiện (luôn gọi LLM nếu không có trong DB)</summary>
+		private async Task<int?> EstimateImprovementDaysAsync(ProductEntity product)
+		{
+			try
+			{
+				if (string.IsNullOrWhiteSpace(product.ProductName))
+					return null;
+
+				// ✅ BƯỚC 1: Nếu có Description → gọi LLM để ước tính từ description
+				if (!string.IsNullOrWhiteSpace(product.Description))
+				{
+					_logger.LogInformation("📅 Calling LLM to estimate improvement days from DB description: {ProductName}", product.ProductName);
+
+					var llmPrompt = $@"Sản phẩm: {product.ProductName}
+Mô tả: {product.Description}
+
+Dựa vào mô tả sản phẩm, hãy ước tính sau bao nhiêu ngày sử dụng sản phẩm này sẽ có hiệu quả rõ rệt.
+
+Trả lời chỉ là một số nguyên (3, 5, 7, 10, 14, 21, 30, ...), không thêm text khác. Ví dụ: 7";
+
+					var llmResponse = await _llmService.CallLLMAsync(
+						"Bạn là chuyên gia về sản phẩm chăm sóc da và mỹ phẩm. Hãy ước tính chính xác thời gian cần thiết để sản phẩm có hiệu quả.",
+						llmPrompt,
+						new List<LLMMessage>());
+
+					if (!string.IsNullOrWhiteSpace(llmResponse) && int.TryParse(llmResponse.Trim(), out var days))
+					{
+						_logger.LogInformation("✅ Got improvement days from LLM: {Days} days", days);
+						return days;
+					}
+				}
+
+				// ✅ BƯỚC 2: Nếu không có description → gọi LLM để tìm kiếm từ mạng
+				_logger.LogInformation("🔍 Calling LLM to find improvement days from internet: {ProductName}", product.ProductName);
+
+				var searchPrompt = $@"Hãy tìm kiếm thông tin về thời gian cần thiết để sản phẩm {product.ProductName} có hiệu quả.
+
+Trả lời chỉ là một số nguyên (3, 5, 7, 10, 14, 21, 30, ...), không thêm text khác. Ví dụ: 7";
+
+				var searchResponse = await _llmService.CallLLMAsync(
+					"Bạn là một chuyên gia tìm kiếm thông tin sản phẩm trên internet. Hãy cung cấp thông tin chính xác về thời gian hiệu quả của sản phẩm.",
+					searchPrompt,
+					new List<LLMMessage>());
+
+				if (!string.IsNullOrWhiteSpace(searchResponse) && int.TryParse(searchResponse.Trim(), out var searchDays))
+				{
+					_logger.LogInformation("✅ Got improvement days from internet search: {Days} days", searchDays);
+					return searchDays;
+				}
+
+				_logger.LogWarning("⚠️ Could not estimate improvement days for: {ProductName}", product.ProductName);
+				return null;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error estimating improvement days from LLM: {ProductName}", product.ProductName);
+				return null;
 			}
 		}
 
