@@ -89,8 +89,8 @@ namespace Aesthetics.Data.AestheticsServices.EmailService
 				// ✅ BƯỚC 3: Lấy tất cả staff không phải bác sĩ (IsDoctor = false)
 				var warehouseStaff = await staffRepository.FindByPredicate(x =>
 					!x.DeleteStatus &&
-					x.IsDoctor != true &&  // Không phải bác sĩ
-					!string.IsNullOrEmpty(x.Email)  // Có email hợp lệ
+					x.IsDoctor != true &&  
+					!string.IsNullOrEmpty(x.Email) 
 				);
 
 				if (!warehouseStaff.Any())

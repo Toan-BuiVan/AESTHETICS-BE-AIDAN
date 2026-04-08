@@ -34,7 +34,6 @@ namespace Aesthetics.Data.AestheticsServices.EmailService
 					_logger.LogError(ex, "AppointmentReminderBackgroundService: Exception occurred");
 				}
 
-				// Chạy mỗi 1 giờ
 				await Task.Delay(TimeSpan.FromHours(1), stoppingToken);
 			}
 		}
@@ -92,7 +91,7 @@ namespace Aesthetics.Data.AestheticsServices.EmailService
 			IStaffRepository staffRepository,
 			IServiceRepository serviceRepository,
 			IEmailService emailService,
-			IAppointmentRepositoty appointmentRepository) // Thêm param này
+			IAppointmentRepositoty appointmentRepository) 
 		{
 			try
 			{
