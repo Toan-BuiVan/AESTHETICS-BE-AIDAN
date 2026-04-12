@@ -136,6 +136,20 @@ namespace Aesthetics.Data.AestheticsServices.EmailService
 		{
 			try
 			{
+				// ✅ Kiểm tra email không trống
+				if (string.IsNullOrWhiteSpace(toEmail))
+				{
+					_logger.LogWarning("SEND_EMAIL_EMPTY_ADDRESS: Email address không được cung cấp");
+					return false;
+				}
+
+				// ✅ Kiểm tra format email hợp lệ
+				if (!IsValidEmail(toEmail))
+				{
+					_logger.LogWarning("SEND_EMAIL_INVALID_FORMAT: Email address không hợp lệ - Email: {ToEmail}", toEmail);
+					return false;
+				}
+
 				// ✅ Kiểm tra username/password không trống
 				if (string.IsNullOrWhiteSpace(_smtpUsername) || string.IsNullOrWhiteSpace(_smtpPassword))
 				{
@@ -143,7 +157,7 @@ namespace Aesthetics.Data.AestheticsServices.EmailService
 					return false;
 				}
 
-				_logger.LogInformation("SEND_EMAIL_START: Đang gửi email đến {ToEmail}, Subject: {Subject}", 
+				_logger.LogInformation("SEND_EMAIL_START: Đang gửi email đến {ToEmail}, Subject: {Subject}",
 					toEmail, subject);
 
 				using var client = new SmtpClient(_smtpHost, _smtpPort)
@@ -174,11 +188,16 @@ namespace Aesthetics.Data.AestheticsServices.EmailService
 				}
 				catch (SmtpException smtpEx)
 				{
-					_logger.LogError(smtpEx, 
+					_logger.LogError(smtpEx,
 						"SEND_EMAIL_SMTP_ERROR: Lỗi SMTP - StatusCode: {StatusCode}, Message: {Message}",
 						smtpEx.StatusCode, smtpEx.Message);
 					return false;
 				}
+			}
+			catch (FormatException formatEx)
+			{
+				_logger.LogWarning(formatEx, "SEND_EMAIL_FORMAT_ERROR: Email address không hợp lệ - ToEmail: {ToEmail}", toEmail);
+				return false;
 			}
 			catch (Exception ex)
 			{
@@ -187,6 +206,21 @@ namespace Aesthetics.Data.AestheticsServices.EmailService
 			}
 		}
 
+		/// <summary>
+		/// ✅ Validate email address format
+		/// </summary>
+		private bool IsValidEmail(string email)
+		{
+			try
+			{
+				var mailAddress = new MailAddress(email);
+				return true;
+			}
+			catch
+			{
+				return false;
+			}
+		}
 		public async Task<bool> SendAppointmentCancellation(string customerEmail, string customerName, string serviceName, DateTime appointmentTime, string staffName)
 		{
 			try

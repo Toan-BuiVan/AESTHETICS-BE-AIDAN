@@ -40,6 +40,7 @@ namespace Aesthetics.Data.AestheticsServices
 		private readonly IClinicRepository _clinicRepository;
 		private readonly ICustomerTreatmentSessionsService _customerTreatmentSessionsService;
 		private readonly IInvoiceService _invoiceService;
+		private readonly IStaffShiftRepository _staffShiftRepository;
 
 		// Constants for better maintainability
 		private const int MAX_DOCTOR_DAILY_LIMIT = 10;  // Giới hạn bác sĩ
@@ -67,7 +68,8 @@ namespace Aesthetics.Data.AestheticsServices
 			IVoucherRepository voucherRepository,
 			IWalletRepository walletRepository,
 			ICustomerTreatmentSessionsService customerTreatmentSessionsService,
-			IInvoiceService invoiceService)
+			IInvoiceService invoiceService,
+			IStaffShiftRepository staffShiftRepository)
 		{
 			_logger = logger;
 			_appointmentRepositoty = appointmentRepositoty;
@@ -91,6 +93,7 @@ namespace Aesthetics.Data.AestheticsServices
 			_walletRepository = walletRepository;
 			_customerTreatmentSessionsService = customerTreatmentSessionsService;
 			_invoiceService = invoiceService;
+			_staffShiftRepository = staffShiftRepository;
 		}
 
 		public async Task<CreateAppointmentResponseModel> create(CreateAppointment appointment)
@@ -811,6 +814,22 @@ namespace Aesthetics.Data.AestheticsServices
 				if (doctor == null || doctor.IsDoctor != true)
 					return null;
 
+				var leaveShifts = await _staffShiftRepository.FindByPredicate(x =>
+					x.StaffId == request.DoctorId &&
+					x.Date == request.Date.Date &&
+					x.Status == 2 && 
+					!x.DeleteStatus);
+
+				if (leaveShifts.Any())
+				{
+					_logger.LogWarning("GET_DOCTOR_AVAILABILITY_ON_LEAVE: DoctorId {DoctorId} có lịch nghỉ vào ngày {Date:yyyy-MM-dd}",
+						request.DoctorId, request.Date.Date);
+					return null;
+				}
+
+				_logger.LogInformation("GET_DOCTOR_AVAILABILITY_AVAILABLE: DoctorId {DoctorId} có sẵn sàng làm việc vào ngày {Date:yyyy-MM-dd}",
+					request.DoctorId, request.Date.Date);
+
 				int? ctsId = request.CustomerTreatmentSessionId;
 				int serviceDuration = 60;
 				int serviceId = 0;
@@ -1298,11 +1317,11 @@ namespace Aesthetics.Data.AestheticsServices
 		}
 
 		private async Task<int?> CreateInvoiceForAppointmentAsync(
-		CreateAppointment appointment,
-		ServiceEntity service,
-		int appointmentId,
-		int? treatmentPlanId = null,
-		int? treatmentSessionId = null)
+			CreateAppointment appointment,
+			ServiceEntity service,
+			int appointmentId,
+			int? treatmentPlanId = null,
+			int? treatmentSessionId = null)
 		{
 			try
 			{
@@ -1351,14 +1370,20 @@ namespace Aesthetics.Data.AestheticsServices
 
 				// ✅ Tính giá sau giảm
 				decimal finalPrice = servicePrice - discountValue;
-				decimal paidAmount = appointment.TypeInvoice == EnumTreatmentPlans.PayInAdvance
-					? finalPrice
-					: Math.Min(appointment.PaidAmount, finalPrice);
 
-				// ✅ BỔSUNG: Nếu TypeInvoice là PayInAdvance (1) hoặc PartialPayment (2), status là "ThanhToanMotPhan"
-				string invoiceStatus = GetInvoiceStatusByTypeInvoice(appointment.TypeInvoice, paidAmount, finalPrice);
+				// ✅ CẬP NHẬT: PaidAmount LUÔN = 0 lúc tạo invoice (chưa thanh toán thực tế)
+				// TypeInvoice chỉ dùng để xác định Status (kỳ vọng thanh toán), chứ không ảnh hưởng PaidAmount
+				decimal paidAmount = 0m;
 
-				// ✅ BỔSUNG: Lấy TreatmentSessionId từ CustomerTreatmentSession
+				// ✅ Ánh xạ TypeInvoice sang invoice status string
+				// TypeInvoice = 1 (PayInAdvance) → Status = "DaThanhToan" (kỳ vọng)
+				// Nhưng PaidAmount vẫn = 0, OutstandingBalance vẫn = finalPrice
+				string invoiceStatus = GetInvoiceStatusByPaymentStatus(appointment.TypeInvoice);
+
+				_logger.LogInformation("CREATE_INVOICE_STATUS_MAPPING: TypeInvoice={TypeInvoice} → Status={Status}, FinalPrice={FinalPrice}, PaidAmount={PaidAmount}, OutstandingBalance={OutstandingBalance}",
+					appointment.TypeInvoice, invoiceStatus, finalPrice, paidAmount, finalPrice - paidAmount);
+
+				// ✅ Lấy TreatmentSessionId từ CustomerTreatmentSession
 				int? treatmentSessionIdFromCts = null;
 				if (appointment.CustomerTreatmentSessionId.HasValue)
 				{
@@ -1375,17 +1400,17 @@ namespace Aesthetics.Data.AestheticsServices
 					StaffId = appointment.StaffId.Value,
 					ServiceId = service.Id,
 					VoucherId = appliedVoucherId,
-					TreatmentPlanId = treatmentPlanId,       
-					TreatmentSessionId = treatmentSessionId ?? treatmentSessionIdFromCts,  
-					TotalMoney = servicePrice,        
-					DiscountValue = discountValue,    
-					FinalPrice = finalPrice,           
-					PaidAmount = paidAmount,
-					OutstandingBalance = finalPrice - paidAmount,
+					TreatmentPlanId = treatmentPlanId,
+					TreatmentSessionId = treatmentSessionId ?? treatmentSessionIdFromCts,
+					TotalMoney = servicePrice,
+					DiscountValue = discountValue,
+					FinalPrice = finalPrice,
+					PaidAmount = paidAmount,                           // ✅ LUÔN = 0 lúc tạo
+					OutstandingBalance = finalPrice - paidAmount,     // ✅ LUÔN = finalPrice lúc tạo
 					DateCreated = DateTime.UtcNow,
 					Status = invoiceStatus,
 					Type = "DichVu",
-					OrderStatus = invoiceStatus,
+					OrderStatus = "DangChoXuLy",
 					PaymentMethod = appointment.PaymentMethod,
 					DeleteStatus = false
 				};
@@ -1400,11 +1425,11 @@ namespace Aesthetics.Data.AestheticsServices
 					ServiceId = service.Id,
 					Price = servicePrice,
 					Quantity = 1,
-					TreatmentPlanId = treatmentPlanId,       
-					TreatmentSessionId = treatmentSessionId ?? treatmentSessionIdFromCts,  
-					TotalMoney = servicePrice,        
-					DiscountValue = discountValue,    
-					FinalPrice = finalPrice,           
+					TreatmentPlanId = treatmentPlanId,
+					TreatmentSessionId = treatmentSessionId ?? treatmentSessionIdFromCts,
+					TotalMoney = servicePrice,
+					DiscountValue = discountValue,
+					FinalPrice = finalPrice,
 					Status = invoiceStatus,
 					Type = "DichVu",
 					StatusComment = false,
@@ -1421,26 +1446,22 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-		private string GetInvoiceStatusByTypeInvoice(EnumTreatmentPlans? typeInvoice, decimal paidAmount, decimal totalAmount)
+		// ✅ Helper method để ánh xạ TypeInvoice (EnumTreatmentPlans) sang invoice status string
+		// ⚠️ CHÚ Ý: appointment.TypeInvoice là EnumTreatmentPlans (kỳ vọng thanh toán, không phải thực tế)
+		// TypeInvoice = 0 (PayAfterService) → "ChuaThanhToan" (chưa thanh toán - có thể thanh toán sau)
+		// TypeInvoice = 1 (PayInAdvance) → "DaThanhToan" (kỳ vọng thanh toán toàn bộ trước)
+		// TypeInvoice = 2 (PartialPayment) → "ThanhToanMotPhan" (kỳ vọng thanh toán một phần trước)
+		// ⭐ LƯU Ý: OutstandingBalance LUÔN = FinalPrice lúc tạo invoice
+		// ⭐ Chỉ khi thanh toán thực tế thành công mới cập nhật PaidAmount và OutstandingBalance
+		private string GetInvoiceStatusByPaymentStatus(EnumTreatmentPlans? paymentStatus)
 		{
-			// ✅ Nếu TypeInvoice là PayInAdvance (1) hoặc PartialPayment (2), trả về "ThanhToanMotPhan"
-			if (typeInvoice == EnumTreatmentPlans.PayInAdvance || typeInvoice == EnumTreatmentPlans.PartialPayment)
+			return paymentStatus switch
 			{
-				_logger.LogInformation("INVOICE_STATUS_OVERRIDE: TypeInvoice={TypeInvoice}, Status set to 'ThanhToanMotPhan'", typeInvoice);
-				return "ThanhToanMotPhan";
-			}
-
-			// ✅ Ngược lại, sử dụng logic cũ
-			return GetInvoiceStatus(paidAmount, totalAmount);
-		}
-
-		private string GetInvoiceStatus(decimal paidAmount, decimal totalAmount)
-		{
-			if (paidAmount >= totalAmount)
-				return "DaThanhToan";
-			if (paidAmount > 0)
-				return "ThanhToanMotPhan";
-			return "ChuaThanhToan";
+				EnumTreatmentPlans.PayAfterService => "ChuaThanhToan",           // 0: Chưa thanh toán
+				EnumTreatmentPlans.PayInAdvance => "ThanhToanToanBo",            // 1: Thanh toán toàn bộ
+				EnumTreatmentPlans.PartialPayment => "ThanhToanMotPhan",         // 2: Thanh toán một phần
+				_ => "ChuaThanhToan"                                              // Default
+			};
 		}
 
 		private async Task SendConfirmationEmail(AppointmentEntity appointment)

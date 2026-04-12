@@ -11,7 +11,7 @@ namespace Aesthetics.Data.AestheticsInterfaces
 {
     public interface IServicesService
     {
-		Task<bool> create(CreateService service);
+		Task<CreateServiceResponseModel> create(CreateService service);
 
 		Task<bool> update(UpdateService service);
 

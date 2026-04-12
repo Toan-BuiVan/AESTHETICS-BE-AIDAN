@@ -6,6 +6,7 @@ using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Enum;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ClosedXML.Excel;
 using LinqKit;
 using Microsoft.Extensions.Logging;
 using OfficeOpenXml;
@@ -43,14 +44,19 @@ namespace Aesthetics.Data.AestheticsServices
 			_treatmentSessionRepository = treatmentSessionRepository;
 			_serviceTypeRepository = serviceTypeRepository;
 		}
-		public async Task<bool> create(CreateService service)
+		public async Task<CreateServiceResponseModel> create(CreateService service)
 		{
 			try
 			{
 				if (service == null)
 				{
 					_logger.LogWarning("CreateService request is null.");
-					return false;
+					return new CreateServiceResponseModel
+					{
+						Success = false,
+						ServiceId = null,
+						Message = "CreateService request is null."
+					};
 				}
 				string processedImage = service.ServiceImage;
 				if (!string.IsNullOrEmpty(service.ServiceImage))
@@ -61,7 +67,12 @@ namespace Aesthetics.Data.AestheticsServices
 				if (serviceName != null)
 				{
 					_logger.LogWarning("Create Service failed: Service with name '{ServiceName}' already exists.", service.ServiceName);
-					return false;
+					return new CreateServiceResponseModel
+					{
+						Success = false,
+						ServiceId = null,
+						Message = $"Service with name '{service.ServiceName}' already exists."
+					};
 				}
 				var newService = new ServiceEntity
 				{
@@ -74,57 +85,23 @@ namespace Aesthetics.Data.AestheticsServices
 					IsCourse = service.IsCourse ?? false
 				};
 				await _serviceRepository.CreateEntity(newService);
-				if (newService.IsCourse == true)
+				_logger.LogInformation("Create Service success: ServiceId {ServiceId}", newService.Id);
+				return new CreateServiceResponseModel
 				{
-					var sessionInterval = service.SessionInterval ?? 1;
-					const decimal discountRate = 0.85m;
-
-					var totalPriceOriginal = (service.Price ?? 0) / discountRate;
-
-					var pricePerSession = sessionInterval > 0
-						? totalPriceOriginal / sessionInterval
-						: (service.Price ?? 0);
-
-					var newPlan = new TreatmentPlanEntity
-					{
-						ServiceId = newService.Id,
-						DeleteStatus = false,
-						PlanName = $"Gói {sessionInterval} buổi {service.ServiceName}",
-						TotalSessions = sessionInterval,
-						Price = pricePerSession, 
-						SessionInterval = sessionInterval,
-						Description = $"Gói liệu trình {sessionInterval} buổi - Tiết kiệm 15%"
-					};
-					await _treatmentPlanRepository.CreateEntity(newPlan);
-
-					var treatmentSessions = new List<TreatmentSessionEntity>();
-					for (int i = 1; i <= sessionInterval; i++)
-					{
-						treatmentSessions.Add(new TreatmentSessionEntity
-						{
-							TreatmentPlanId = newPlan.Id,
-							SessionNumber = i,
-							SessionName = $"Buổi {i}: {service.ServiceName}",
-							Description = $"Buổi thứ {i} của gói liệu trình {service.ServiceName}",
-							Duration = service.Duration ?? 0,
-							DeleteStatus = false
-						});
-					}
-					if (treatmentSessions.Any())
-					{
-						await _treatmentSessionRepository.CreateRangeEntities(treatmentSessions);
-						_logger.LogInformation(
-							"Created {Count} treatment sessions for TreatmentPlan {PlanId}",
-							treatmentSessions.Count,
-							newPlan.Id);
-					}
-				}
-				return true;
+					Success = true,
+					ServiceId = newService.Id,
+					Message = "Service created successfully."
+				};
 			}
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "Error creating service: {ServiceName}", service.ServiceName);
-				return false;
+				return new CreateServiceResponseModel
+				{
+					Success = false,
+					ServiceId = null,
+					Message = $"Error creating service: {ex.Message}"
+				};
 			}
 		}
 
@@ -173,7 +150,10 @@ namespace Aesthetics.Data.AestheticsServices
 					return false;
 				}
 
+				// ✅ Lưu giữ giá trị cũ để so sánh
 				bool? oldIsCourse = existingService.IsCourse;
+				decimal? oldPrice = existingService.Price;
+				int? oldDuration = existingService.Duration;
 
 				if (!string.IsNullOrWhiteSpace(service.ServiceName)
 					&& existingService.ServiceName != service.ServiceName)
@@ -208,6 +188,7 @@ namespace Aesthetics.Data.AestheticsServices
 					var processedImage = await _commonService.BaseProcessingFunction64(service.ServiceImage);
 					existingService.ServiceImage = processedImage;
 				}
+
 				var updated = await _serviceRepository.UpdateEntity(existingService);
 
 				if (!updated)
@@ -216,14 +197,159 @@ namespace Aesthetics.Data.AestheticsServices
 					return false;
 				}
 
+				// ✅ Xử lý thay đổi IsCourse
 				await HandleTreatmentPlanByCourse(existingService.Id, oldIsCourse, existingService.IsCourse ?? false);
-				_logger.LogInformation("Update Service success: Id {Id}", service.Id);
+
+				// ✅ Xử lý thay đổi giá - tính toán lại giá TreatmentPlans
+				if (oldPrice.HasValue && service.Price.HasValue && oldPrice != service.Price)
+				{
+					await UpdateTreatmentPlanPricesByService(existingService.Id, oldPrice.Value, service.Price.Value);
+				}
+
+				// ✅ Xử lý thay đổi thời lượng - cập nhật Duration của TreatmentSessions
+				if (oldDuration.HasValue && service.Duration.HasValue && oldDuration != service.Duration)
+				{
+					await UpdateTreatmentSessionDurationsByService(existingService.Id, service.Duration.Value);
+				}
+
+				_logger.LogInformation("Update Service success: Id {Id}, PriceChanged: {PriceChanged}, DurationChanged: {DurationChanged}",
+					service.Id,
+					oldPrice != service.Price,
+					oldDuration != service.Duration);
 				return true;
 			}
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "Update Service exception: Id {Id}", service.Id);
 				return false;
+			}
+		}
+
+		/// <summary>
+		/// ✅ Cập nhật giá của tất cả TreatmentPlans khi giá Service thay đổi
+		/// Tính toán lại giá dựa trên tỉ lệ thay đổi giữa giá cũ và giá mới
+		/// </summary>
+		private async Task UpdateTreatmentPlanPricesByService(int serviceId, decimal oldPrice, decimal newPrice)
+		{
+			try
+			{
+				_logger.LogInformation("UpdateTreatmentPlanPricesByService started: ServiceId {ServiceId}, OldPrice {OldPrice} → NewPrice {NewPrice}",
+					serviceId, oldPrice, newPrice);
+
+				// ✅ Lấy tất cả TreatmentPlans của Service này (chưa bị xóa)
+				var treatmentPlans = await _treatmentPlanRepository
+					.FindByPredicate(x => x.ServiceId == serviceId && x.DeleteStatus != true);
+
+				if (!treatmentPlans.Any())
+				{
+					_logger.LogInformation("Không tìm thấy TreatmentPlans nào cho ServiceId {ServiceId}", serviceId);
+					return;
+				}
+
+				const decimal discountRate = 0.85m;
+				var plansToUpdate = new List<TreatmentPlanEntity>();
+
+				foreach (var plan in treatmentPlans)
+				{
+					if (oldPrice > 0)
+					{
+						// ✅ Tính tỉ lệ thay đổi giá
+						var priceRatio = newPrice / oldPrice;
+						var newPlanPrice = (plan.Price ?? 0) * priceRatio;
+
+						// ✅ Làm tròn về 1000 (theo quy tắc của hệ thống)
+						newPlanPrice = Math.Floor(newPlanPrice / 1000) * 1000;
+
+						plan.Price = newPlanPrice;
+						plansToUpdate.Add(plan);
+
+						_logger.LogInformation("Cập nhật giá TreatmentPlan: PlanId {PlanId}, OldPrice {OldPrice} → NewPrice {NewPrice}",
+							plan.Id, (plan.Price ?? 0) / priceRatio, newPlanPrice);
+					}
+				}
+
+				if (plansToUpdate.Any())
+				{
+					var updateSuccess = await _treatmentPlanRepository.UpdateRangeEntities(plansToUpdate);
+
+					if (updateSuccess)
+					{
+						_logger.LogInformation("UpdateTreatmentPlanPricesByService thành công: Cập nhật {Count} gói liệu trình cho ServiceId {ServiceId}",
+							plansToUpdate.Count, serviceId);
+					}
+					else
+					{
+						_logger.LogError("UpdateTreatmentPlanPricesByService thất bại ở Repository: ServiceId {ServiceId}", serviceId);
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "UpdateTreatmentPlanPricesByService exception: ServiceId {ServiceId}", serviceId);
+			}
+		}
+
+		/// <summary>
+		/// ✅ Cập nhật Duration của tất cả TreatmentSessions khi Duration của Service thay đổi
+		/// </summary>
+		private async Task UpdateTreatmentSessionDurationsByService(int serviceId, int newDuration)
+		{
+			try
+			{
+				_logger.LogInformation("UpdateTreatmentSessionDurationsByService started: ServiceId {ServiceId}, NewDuration {NewDuration} phút",
+					serviceId, newDuration);
+
+				// ✅ Lấy tất cả TreatmentPlans của Service này
+				var treatmentPlans = await _treatmentPlanRepository
+					.FindByPredicate(x => x.ServiceId == serviceId && x.DeleteStatus != true);
+
+				if (!treatmentPlans.Any())
+				{
+					_logger.LogInformation("Không tìm thấy TreatmentPlans nào cho ServiceId {ServiceId}", serviceId);
+					return;
+				}
+
+				var planIds = treatmentPlans.Select(x => x.Id).ToList();
+
+				// ✅ Lấy tất cả TreatmentSessions của các Plans này
+				var treatmentSessions = await _treatmentSessionRepository
+					.FindByPredicate(x => planIds.Contains(x.TreatmentPlanId ?? 0) && x.DeleteStatus != true);
+
+				if (!treatmentSessions.Any())
+				{
+					_logger.LogInformation("Không tìm thấy TreatmentSessions nào cho ServiceId {ServiceId}", serviceId);
+					return;
+				}
+
+				var sessionsToUpdate = new List<TreatmentSessionEntity>();
+
+				foreach (var session in treatmentSessions)
+				{
+					session.Duration = newDuration;
+					sessionsToUpdate.Add(session);
+
+					_logger.LogInformation("Cập nhật Duration: SessionId {SessionId}, Duration {Duration} phút",
+						session.Id, newDuration);
+				}
+
+				if (sessionsToUpdate.Any())
+				{
+					var updateSuccess = await _treatmentSessionRepository.UpdateRangeEntities(sessionsToUpdate);
+
+					if (updateSuccess)
+					{
+						_logger.LogInformation("UpdateTreatmentSessionDurationsByService thành công: Cập nhật {Count} buổi điều trị cho ServiceId {ServiceId}",
+							sessionsToUpdate.Count, serviceId);
+					}
+					else
+					{
+						_logger.LogError("UpdateTreatmentSessionDurationsByService thất bại ở Repository: ServiceId {ServiceId}", serviceId);
+					}
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "UpdateTreatmentSessionDurationsByService exception: ServiceId {ServiceId}", serviceId);
 			}
 		}
 
@@ -303,9 +429,9 @@ namespace Aesthetics.Data.AestheticsServices
 		{
 			try
 			{
-				_logger.LogInformation("Start exporting Services to Excel. Filters: {@Filters}", exportService);
+				_logger.LogInformation("Starting ExportToExcelAsync with ClosedXML");
 
-				// Chỉ filter DeleteStatus + ServiceIds (theo đúng class của bạn)
+				// ✅ Chỉ filter DeleteStatus + ServiceIds
 				Expression<Func<ServiceEntity, bool>> predicate = x => x.DeleteStatus != true;
 
 				if (exportService.ServiceIds != null && exportService.ServiceIds.Any())
@@ -328,7 +454,7 @@ namespace Aesthetics.Data.AestheticsServices
 					return CreateEmptyServiceExcel();
 				}
 
-				// Batch load ServiceType (giống Product)
+				// Batch load ServiceType
 				var serviceTypeIds = allServicesList
 					.Where(x => x.ServiceTypeId.HasValue)
 					.Select(x => x.ServiceTypeId.Value)
@@ -353,94 +479,112 @@ namespace Aesthetics.Data.AestheticsServices
 
 				// Sắp xếp
 				var finalResults = allServicesList
-					.OrderBy(x => x.ServiceName ?? string.Empty)
+					.OrderBy(x => x.Id)
 					.ToList();
 
-				using var package = new ExcelPackage();
-				var ws = package.Workbook.Worksheets.Add("Services");
+				_logger.LogDebug("Starting Excel export with ClosedXML");
 
-				// Headers
-				string[] headers =
-				[
-					"Id", "ServiceTypeName", "ServiceName", "Description",
-					"ServiceImage", "Price", "Duration", "IsCourse"
-				];
-
-				for (int col = 0; col < headers.Length; col++)
+				// ✅ Sử dụng ClosedXML thay vì EPPlus
+				using (var workbook = new XLWorkbook())
 				{
-					ws.Cells[1, col + 1].Value = headers[col];
+					var worksheet = workbook.Worksheets.Add("Services");
+
+					// Headers
+					worksheet.Cell(1, 1).Value = "Id";
+					worksheet.Cell(1, 2).Value = "ServiceTypeName";
+					worksheet.Cell(1, 3).Value = "ServiceName";
+					worksheet.Cell(1, 4).Value = "Description";
+					worksheet.Cell(1, 5).Value = "ServiceImage";
+					worksheet.Cell(1, 6).Value = "Price";
+					worksheet.Cell(1, 7).Value = "Duration";
+					worksheet.Cell(1, 8).Value = "IsCourse";
+
+					// ✅ Format header - Bold và màu xám
+					var headerRow = worksheet.Row(1);
+					headerRow.Style.Font.Bold = true;
+					headerRow.Style.Fill.BackgroundColor = XLColor.LightGray;
+
+					// Data
+					for (int i = 0; i < finalResults.Count; i++)
+					{
+						var row = i + 2;
+						var item = finalResults[i];
+
+						worksheet.Cell(row, 1).Value = item.Id;
+						worksheet.Cell(row, 2).Value = item.ServiceType?.ServiceTypeName;
+						worksheet.Cell(row, 3).Value = item.ServiceName;
+						worksheet.Cell(row, 4).Value = item.Description;
+						worksheet.Cell(row, 5).Value = item.ServiceImage;
+						worksheet.Cell(row, 6).Value = item.Price;
+						worksheet.Cell(row, 7).Value = item.Duration;
+						worksheet.Cell(row, 8).Value = item.IsCourse ?? false;
+					}
+
+					// ✅ Auto fit columns
+					worksheet.Columns().AdjustToContents();
+
+					// Lưu vào memory stream
+					using (var stream = new MemoryStream())
+					{
+						workbook.SaveAs(stream);
+						_logger.LogInformation("Successfully exported {Count} services to Excel", finalResults.Count);
+						return stream.ToArray();
+					}
 				}
-
-				// Data
-				for (int i = 0; i < finalResults.Count; i++)
-				{
-					var row = i + 2;
-					var item = finalResults[i];
-
-					ws.Cells[row, 1].Value = item.Id;
-					ws.Cells[row, 2].Value = item.ServiceType?.ServiceTypeName;
-					ws.Cells[row, 3].Value = item.ServiceName;
-					ws.Cells[row, 4].Value = item.Description;
-					ws.Cells[row, 5].Value = item.ServiceImage;
-					ws.Cells[row, 6].Value = item.Price;
-					ws.Cells[row, 7].Value = item.Duration;
-					ws.Cells[row, 8].Value = item.IsCourse;
-				}
-
-				// Format giống Product
-				ws.Cells[ws.Dimension.Address].AutoFitColumns();
-
-				using (var range = ws.Cells[1, 1, 1, headers.Length])
-				{
-					range.Style.Font.Bold = true;
-					range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-					range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-					range.Style.Border.Top.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
-					range.Style.Border.Bottom.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
-					range.Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
-					range.Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
-				}
-
-				_logger.LogInformation("Successfully exported {Count} services to Excel", finalResults.Count);
-				return package.GetAsByteArray();
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "Export Services to Excel exception. Filters: {@Filters}", exportService);
+				_logger.LogError(ex, "Export Services to Excel exception");
 				return null;
 			}
 		}
 
 		private byte[] CreateEmptyServiceExcel()
 		{
-			using var package = new ExcelPackage();
-			var ws = package.Workbook.Worksheets.Add("Services");
-
-			string[] headers =
-			[
-				"Id", "ServiceTypeName", "ServiceName", "Description",
-				"ServiceImage", "Price", "Duration", "IsCourse"
-			];
-
-			for (int col = 0; col < headers.Length; col++)
+			try
 			{
-				ws.Cells[1, col + 1].Value = headers[col];
+				using (var workbook = new XLWorkbook())
+				{
+					var ws = workbook.Worksheets.Add("Services");
+
+					string[] headers =
+					[
+						"Id", "ServiceTypeName", "ServiceName", "Description",
+						"ServiceImage", "Price", "Duration", "IsCourse"
+					];
+
+					// Headers
+					for (int col = 0; col < headers.Length; col++)
+					{
+						ws.Cell(1, col + 1).Value = headers[col];
+					}
+
+					// Format header
+					var headerRow = ws.Row(1);
+					headerRow.Style.Font.Bold = true;
+					headerRow.Style.Fill.BackgroundColor = XLColor.LightGray;
+
+					// Empty message
+					ws.Cell(2, 1).Value = "No services found";
+					ws.Range(2, 1, 2, headers.Length).Merge();
+					ws.Cell(2, 1).Style.Alignment.Horizontal = XLAlignmentHorizontalValues.Center;
+					ws.Cell(2, 1).Style.Font.Italic = true;
+
+					// Auto fit
+					ws.Columns().AdjustToContents();
+
+					using (var stream = new MemoryStream())
+					{
+						workbook.SaveAs(stream);
+						return stream.ToArray();
+					}
+				}
 			}
-
-			ws.Cells[2, 1].Value = "No services found";
-			ws.Cells[$"A2:{(char)('A' + headers.Length - 1)}2"].Merge = true;
-			ws.Cells[2, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-			ws.Cells[2, 1].Style.Font.Italic = true;
-
-			using (var range = ws.Cells[1, 1, 1, headers.Length])
+			catch (Exception ex)
 			{
-				range.Style.Font.Bold = true;
-				range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-				range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
+				_logger.LogError(ex, "CreateEmptyServiceExcel exception");
+				return Array.Empty<byte>();
 			}
-
-			ws.Cells[ws.Dimension.Address].AutoFitColumns();
-			return package.GetAsByteArray();
 		}
 
 		public async Task<BaseDataCollection<ServiceResponseModel>> GetListAsync(ServiceGet service)

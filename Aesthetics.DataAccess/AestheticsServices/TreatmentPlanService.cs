@@ -48,15 +48,30 @@ namespace Aesthetics.Data.AestheticsServices
 					return false;
 				}
 
+				var service = await _serviceRepository.GetById(plan.ServiceId.Value);
+
+				if (service == null)
+				{
+					_logger.LogWarning("Create TreatmentPlan failed: Service not found for ServiceId {ServiceId}", plan.ServiceId);
+					return false;
+				}
+
 				var totalSessions = plan.TotalSessions ?? 0;
+				var sessionInterval = plan.SessionInterval ?? 1;
+				const decimal discountRate = 0.85m; 
+
+				var pricePerSession = (service.Price / sessionInterval);
+				pricePerSession = pricePerSession * discountRate;
+
+				pricePerSession = Math.Floor(pricePerSession ?? 0 / 1000) * 1000;
 
 				var entity = new TreatmentPlanEntity
 				{
 					ServiceId = plan.ServiceId.Value,
 					PlanName = plan.PlanName,
 					TotalSessions = totalSessions,
-					Price = plan.Price ?? 0,
-					SessionInterval = plan.SessionInterval ?? 0,
+					Price = pricePerSession,
+					SessionInterval = sessionInterval,
 					Description = plan.Description,
 					DeleteStatus = false
 				};
@@ -79,6 +94,9 @@ namespace Aesthetics.Data.AestheticsServices
 						{
 							TreatmentPlanId = entity.Id,
 							SessionNumber = i,
+							SessionName = $"Buổi {i}: {service.ServiceName}",
+							Description = $"Buổi thứ {i} của gói liệu trình {service.ServiceName}",
+							Duration = service.Duration ?? 0,
 							DeleteStatus = false
 						});
 					}
@@ -100,12 +118,18 @@ namespace Aesthetics.Data.AestheticsServices
 					{
 						await CreateSessionProductsForSessions(createdSessions, plan.SessionProducts, plan.ServiceId.Value);
 					}
+
+					_logger.LogInformation(
+						"Created {Count} treatment sessions for TreatmentPlan {PlanId}",
+						sessions.Count,
+						entity.Id);
 				}
 
 				_logger.LogInformation(
-					"Create TreatmentPlan success: PlanName {PlanName} for ServiceId {ServiceId}",
+					"Create TreatmentPlan success: PlanName {PlanName} for ServiceId {ServiceId} with Price {Price}",
 					plan.PlanName,
-					plan.ServiceId);
+					plan.ServiceId,
+					pricePerSession);
 
 				return true;
 			}
@@ -362,6 +386,7 @@ namespace Aesthetics.Data.AestheticsServices
 						{
 							sessionProductList.Add(new SessionProductInformation
 							{
+								TreatmentSessionId = session.Id,
 								SessionProductId = sessionProduct.Id,
 								ProductId = sessionProduct.ProductId,
 								ProductName = sessionProduct.Product?.ProductName,
@@ -570,7 +595,7 @@ namespace Aesthetics.Data.AestheticsServices
 							{
 								TreatmentSessionId = session.Id,
 								ProductId = productItem.ProductId,
-								QuantityUsed = productItem.QuantityUsed,  
+								QuantityUsed = 1,  
 								ServiceId = serviceId,
 								DeleteStatus = false
 							});

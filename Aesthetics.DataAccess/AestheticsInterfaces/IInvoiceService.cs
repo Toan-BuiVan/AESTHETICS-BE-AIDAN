@@ -39,9 +39,19 @@ namespace Aesthetics.Data.AestheticsInterfaces
 		Task<bool> UpdatePaymentStatus(UpdateInvoicePaymentStatus request);
 
 		/// <summary>
-		/// Cập nhật trạng thái giao hàng của hóa đơn
+		/// 🆕 Cập nhật OrderStatus cho hóa đơn (Update thủ công)
 		/// </summary>
-		Task<bool> UpdateInvoiceOrderStatus(updateinvoiceorderstatus updateinvoiceorderstatus);
+		Task<bool> UpdateInvoiceOrderStatus(updateinvoiceorderstatus request);
+
+		/// <summary>
+		/// 🆕 Lấy danh sách OrderStatus có sẵn
+		/// </summary>
+		Task<List<string>> GetAvailableOrderStatuses();
+
+        /// <summary>
+        /// 🆕 Update Status Invoice với các logic liên kết
+        /// </summary>
+        Task<bool> UpdateInvoiceStatus(int invoiceId, string newStatus);
 
 		#endregion
 	}

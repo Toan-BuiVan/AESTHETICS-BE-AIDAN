@@ -48,15 +48,15 @@ namespace Aesthetics.Data.AestheticsServices
 			try
 			{
 				// Validate ServiceTypeId exists if provided
-				if (product.ServiceTypeId != null)
-				{
-					var serviceTypeExists = await _serviceTypeRepository.GetById(product.ServiceTypeId);
-					if (serviceTypeExists == null)
-					{
-						_logger.LogWarning("Create Product failed: ServiceTypeId {ServiceTypeId} does not exist", product.ServiceTypeId);
-						return false;
-					}
-				}
+				//if (product.ServiceTypeId != null)
+				//{
+				//	var serviceTypeExists = await _serviceTypeRepository.GetById(product.ServiceTypeId);
+				//	if (serviceTypeExists == null)
+				//	{
+				//		_logger.LogWarning("Create Product failed: ServiceTypeId {ServiceTypeId} does not exist", product.ServiceTypeId);
+				//		return false;
+				//	}
+				//}
 
 				// Validate SupplierId exists if provided
 				if (product.SupplierId != null)
@@ -77,7 +77,7 @@ namespace Aesthetics.Data.AestheticsServices
 
 				var newProduct = new ProductEntity
 				{
-					ServiceTypeId = product.ServiceTypeId,
+					//ServiceTypeId = product.ServiceTypeId,
 					SupplierId = product.SupplierId,
 					ProductName = product.ProductName,
 					Description = product.Description,
@@ -231,10 +231,10 @@ namespace Aesthetics.Data.AestheticsServices
 					existingProduct.ProductName = product.ProductName.Trim();
 				}
 
-				if (product.ServiceTypeId.HasValue)
-				{
-					existingProduct.ServiceTypeId = product.ServiceTypeId.Value;
-				}
+				//if (product.ServiceTypeId.HasValue)
+				//{
+				//	existingProduct.ServiceTypeId = product.ServiceTypeId.Value;
+				//}
 
 				if (product.SupplierId.HasValue)
 				{
@@ -312,10 +312,10 @@ namespace Aesthetics.Data.AestheticsServices
 				}
 
 				// Search by ServiceTypeId
-				if (product.ServiceTypeId.HasValue)
-				{
-					predicate = predicate.And(x => x.ServiceTypeId == product.ServiceTypeId.Value);
-				}
+				//if (product.ServiceTypeId.HasValue)
+				//{
+				//	predicate = predicate.And(x => x.ServiceTypeId == product.ServiceTypeId.Value);
+				//}
 
 				// Search by SupplierId
 				if (product.SupplierId.HasValue)
@@ -335,11 +335,11 @@ namespace Aesthetics.Data.AestheticsServices
 				var allMatchingList = allMatching.ToList();
 
 				// Get all unique ServiceTypeIds and SupplierIds
-				var serviceTypeIds = allMatchingList
-					.Where(x => x.ServiceTypeId.HasValue)
-					.Select(x => x.ServiceTypeId.Value)
-					.Distinct()
-					.ToList();
+				//var serviceTypeIds = allMatchingList
+				//	.Where(x => x.ServiceTypeId.HasValue)
+				//	.Select(x => x.ServiceTypeId.Value)
+				//	.Distinct()
+				//	.ToList();
 
 				var supplierIds = allMatchingList
 					.Where(x => x.SupplierId.HasValue)
@@ -348,14 +348,14 @@ namespace Aesthetics.Data.AestheticsServices
 					.ToList();
 
 				// Load all service types and suppliers in batch
-				var serviceTypes = new Dictionary<int, ServiceTypeEntity>();
+				//var serviceTypes = new Dictionary<int, ServiceTypeEntity>();
 				var suppliers = new Dictionary<int, SupplierEntity>();
 
-				if (serviceTypeIds.Any())
-				{
-					var serviceTypesList = await _serviceTypeRepository.FindByPredicate(x => serviceTypeIds.Contains(x.Id));
-					serviceTypes = serviceTypesList.ToDictionary(x => x.Id, x => x);
-				}
+				//if (serviceTypeIds.Any())
+				//{
+				//	var serviceTypesList = await _serviceTypeRepository.FindByPredicate(x => serviceTypeIds.Contains(x.Id));
+				//	serviceTypes = serviceTypesList.ToDictionary(x => x.Id, x => x);
+				//}
 
 				if (supplierIds.Any())
 				{
@@ -366,10 +366,10 @@ namespace Aesthetics.Data.AestheticsServices
 				// Apply navigation properties to products
 				foreach (var productEntity in allMatchingList)
 				{
-					if (productEntity.ServiceTypeId.HasValue && serviceTypes.ContainsKey(productEntity.ServiceTypeId.Value))
-					{
-						productEntity.ServiceType = serviceTypes[productEntity.ServiceTypeId.Value];
-					}
+					//if (productEntity.ServiceTypeId.HasValue && serviceTypes.ContainsKey(productEntity.ServiceTypeId.Value))
+					//{
+					//	productEntity.ServiceType = serviceTypes[productEntity.ServiceTypeId.Value];
+					//}
 					if (productEntity.SupplierId.HasValue && suppliers.ContainsKey(productEntity.SupplierId.Value))
 					{
 						productEntity.Supplier = suppliers[productEntity.SupplierId.Value];
@@ -387,13 +387,13 @@ namespace Aesthetics.Data.AestheticsServices
 						x.Supplier.SupplierName.ToLower().Contains(supplierName));
 				}
 
-				if (!string.IsNullOrWhiteSpace(product.ServiceTypeName))
-				{
-					var serviceTypeName = product.ServiceTypeName.ToLower();
-					filteredResults = filteredResults.Where(x => x.ServiceType != null &&
-						x.ServiceType.ServiceTypeName != null &&
-						x.ServiceType.ServiceTypeName.ToLower().Contains(serviceTypeName));
-				}
+				//if (!string.IsNullOrWhiteSpace(product.ServiceTypeName))
+				//{
+				//	var serviceTypeName = product.ServiceTypeName.ToLower();
+				//	filteredResults = filteredResults.Where(x => x.ServiceType != null &&
+				//		x.ServiceType.ServiceTypeName != null &&
+				//		x.ServiceType.ServiceTypeName.ToLower().Contains(serviceTypeName));
+				//}
 
 				var finalResults = filteredResults.ToList();
 				var totalCount = finalResults.Count;
@@ -406,7 +406,7 @@ namespace Aesthetics.Data.AestheticsServices
 					.Select(x => new ProductListResponseModel
 					{
 						Id = x.Id,
-						ServiceTypeName = x.ServiceType?.ServiceTypeName,
+						//ServiceTypeName = x.ServiceType?.ServiceTypeName,
 						SupplierName = x.Supplier?.SupplierName,
 						ProductName = x.ProductName,
 						Description = x.Description,
@@ -468,11 +468,11 @@ namespace Aesthetics.Data.AestheticsServices
 				}
 
 				// Get all unique ServiceTypeIds and SupplierIds
-				var serviceTypeIds = allProductsList
-					.Where(x => x.ServiceTypeId.HasValue)
-					.Select(x => x.ServiceTypeId.Value)
-					.Distinct()
-					.ToList();
+				//var serviceTypeIds = allProductsList
+				//	.Where(x => x.ServiceTypeId.HasValue)
+				//	.Select(x => x.ServiceTypeId.Value)
+				//	.Distinct()
+				//	.ToList();
 
 				var supplierIds = allProductsList
 					.Where(x => x.SupplierId.HasValue)
@@ -484,11 +484,11 @@ namespace Aesthetics.Data.AestheticsServices
 				var serviceTypes = new Dictionary<int, ServiceTypeEntity>();
 				var suppliers = new Dictionary<int, SupplierEntity>();
 
-				if (serviceTypeIds.Any())
-				{
-					var serviceTypesList = await _serviceTypeRepository.FindByPredicate(x => serviceTypeIds.Contains(x.Id));
-					serviceTypes = serviceTypesList.ToDictionary(x => x.Id, x => x);
-				}
+				//if (serviceTypeIds.Any())
+				//{
+				//	var serviceTypesList = await _serviceTypeRepository.FindByPredicate(x => serviceTypeIds.Contains(x.Id));
+				//	serviceTypes = serviceTypesList.ToDictionary(x => x.Id, x => x);
+				//}
 
 				if (supplierIds.Any())
 				{
@@ -499,10 +499,10 @@ namespace Aesthetics.Data.AestheticsServices
 				// Apply navigation properties to products
 				foreach (var productEntity in allProductsList)
 				{
-					if (productEntity.ServiceTypeId.HasValue && serviceTypes.ContainsKey(productEntity.ServiceTypeId.Value))
-					{
-						productEntity.ServiceType = serviceTypes[productEntity.ServiceTypeId.Value];
-					}
+					//if (productEntity.ServiceTypeId.HasValue && serviceTypes.ContainsKey(productEntity.ServiceTypeId.Value))
+					//{
+					//	productEntity.ServiceType = serviceTypes[productEntity.ServiceTypeId.Value];
+					//}
 					if (productEntity.SupplierId.HasValue && suppliers.ContainsKey(productEntity.SupplierId.Value))
 					{
 						productEntity.Supplier = suppliers[productEntity.SupplierId.Value];
@@ -535,7 +535,7 @@ namespace Aesthetics.Data.AestheticsServices
 					{
 						var row = i + 2;
 						worksheet.Cells[row, 1].Value = finalResults[i].Id;
-						worksheet.Cells[row, 2].Value = finalResults[i].ServiceType?.ServiceTypeName;
+						//worksheet.Cells[row, 2].Value = finalResults[i].ServiceType?.ServiceTypeName;
 						worksheet.Cells[row, 3].Value = finalResults[i].Supplier?.SupplierName;
 						worksheet.Cells[row, 4].Value = finalResults[i].ProductName;
 						worksheet.Cells[row, 5].Value = finalResults[i].Description;

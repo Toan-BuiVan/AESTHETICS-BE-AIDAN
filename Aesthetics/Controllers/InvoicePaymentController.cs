@@ -105,16 +105,16 @@ namespace ASP_NetCore_Aesthetics.Controllers
                 if (!isValid)
                 {
                     _logger.LogWarning("VNPAY_PAYMENT_CALLBACK_FAILED: Callback xử lý thất bại");
-                    return Redirect("https://yourdomain.com/payment-failed");
+                    return Redirect("http://localhost:3000/profile");
                 }
 
                 _logger.LogInformation("VNPAY_PAYMENT_CALLBACK_SUCCESS: Callback xử lý thành công");
-                return Redirect("https://yourdomain.com/payment-success");
+                return Redirect("http://localhost:3000/profile");
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "VNPAY_PAYMENT_CALLBACK_ERROR: Lỗi khi xử lý callback VNPay");
-                return Redirect("https://yourdomain.com/payment-error");
+                return Redirect("http://localhost:3000/profile");
             }
         }
 

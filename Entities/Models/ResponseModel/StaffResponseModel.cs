@@ -45,6 +45,7 @@ namespace Aesthetics.Entities.Models.ResponseModel
 		public string? Biography { get; set; }
 
 		public string? AccountName { get; set; }
+		public string? Email { get; set; }
 
 		public List<int>? ClinicIds { get; set; }
 	}

@@ -1,10 +1,13 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Data.RepositoryInterfaces;
 using Aesthetics.Entities.Models.RequestModel;
+using Aesthetics.Entities.Models.ResponseModel;
+using Aesthetics.Entities.Entities;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
 
@@ -86,6 +89,65 @@ namespace Aesthetics.Data.AestheticsServices
 				_logger.LogError(ex, "UpdateCustomer exception for AccountId {AccountId}. Exception Message: {Message}",
 					request.AccountId, ex.Message);
 				return false;
+			}
+		}
+
+		public async Task<BaseDataCollection<CustomerEntity>> GetListCustomer(RequestCustomer request)
+		{
+			try
+			{
+				// ✅ Validate
+				if (request.PageNo <= 0)
+					request.PageNo = 1;
+				if (request.PageSize <= 0)
+					request.PageSize = 10;
+
+				_logger.LogInformation("GetListCustomer started: PageNo {PageNo}, PageSize {PageSize}", request.PageNo, request.PageSize);
+
+				// ✅ Build predicate for filtering
+				Expression<Func<CustomerEntity, bool>> predicate = x => x.DeleteStatus != true;
+
+				if (request.Id.HasValue)
+				{
+					predicate = x => x.Id == request.Id.Value && x.DeleteStatus != true;
+				}
+
+				if (!string.IsNullOrWhiteSpace(request.FullName))
+				{
+					var fullName = request.FullName.ToLower();
+					predicate = x => x.FullName.ToLower().Contains(fullName) && x.DeleteStatus != true;
+				}
+
+				// ✅ Get all matching customers
+				var allMatching = await _customerRepository.FindByPredicate(predicate);
+				var totalCount = allMatching.Count;
+
+				// ✅ Apply pagination and sorting (newest first)
+				var pagedData = allMatching
+					.OrderByDescending(x => x.Id)
+					.Skip((request.PageNo - 1) * request.PageSize)
+					.Take(request.PageSize)
+					.ToList();
+
+				_logger.LogInformation("GetListCustomer completed: Found {Count} records, returning {PageSize} for page {PageNo}",
+					totalCount, pagedData.Count, request.PageNo);
+
+				return new BaseDataCollection<CustomerEntity>(
+					pagedData,
+					totalCount,
+					request.PageNo,
+					request.PageSize
+				);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "GetListCustomer exception");
+				return new BaseDataCollection<CustomerEntity>(
+					null,
+					0,
+					request.PageNo,
+					request.PageSize
+				);
 			}
 		}
 	}

@@ -10,6 +10,7 @@
     <PackageReference Include="AutoMapper" Version="16.0.0" />
     <PackageReference Include="Azure.Core" Version="1.51.1" />
     <PackageReference Include="Castle.Core" Version="5.2.1" />
+    <PackageReference Include="ClosedXML" Version="0.105.0" />
     <PackageReference Include="EntityFramework" Version="6.5.1" />
     <PackageReference Include="EPPlus" Version="8.4.2" />
     <PackageReference Include="LinqKit.Microsoft.EntityFrameworkCore" Version="8.1.8" />

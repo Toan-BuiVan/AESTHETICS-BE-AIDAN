@@ -11,9 +11,6 @@ namespace Aesthetics.Entities.Entities
 	[Table("Products")]
 	public class ProductEntity : Aesthetics.Entities.BaseEntity.BaseEntity
 	{
-		/// <summary>FK → ServiceTypes: thuộc loại sản phẩm nào</summary>
-		public int? ServiceTypeId { get; set; }
-
 		/// <summary>FK → Suppliers: nhà cung cấp</summary>
 		public int? SupplierId { get; set; }
 
@@ -46,8 +43,6 @@ namespace Aesthetics.Entities.Entities
 		public decimal? CostPrice { get; set; }
 
 		// Navigation properties
-		[ForeignKey(nameof(ServiceTypeId))]
-		public virtual ServiceTypeEntity? ServiceType { get; set; }
 
 		[ForeignKey(nameof(SupplierId))]
 		public virtual SupplierEntity? Supplier { get; set; }

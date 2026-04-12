@@ -38,6 +38,7 @@ namespace Aesthetics.Data.AestheticsServices
 				var entity = new ClinicEntity
 				{
 					ClinicName = clinic.ClinicName.Trim(),
+					ServiceTypeId =clinic.ServiceTypeId,
 					ClinicStatus = true,
 					DeleteStatus = false
 				};

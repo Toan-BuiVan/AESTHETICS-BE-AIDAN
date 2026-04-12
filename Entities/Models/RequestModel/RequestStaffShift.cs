@@ -10,19 +10,14 @@ namespace Aesthetics.Entities.Models.RequestModel
 	public class CreateStaffShift
 	{
 		public int? StaffId { get; set; }
-
 		public DateTime? Date { get; set; }
 
-		public bool? ShiftType { get; set; }
-	}
+		[Column(TypeName = "datetime")]
+		public DateTime? StartDate { get; set; }
 
-	public class UpdateStaffShift
-	{
-		public int Id { get; set; }
-		public int? StaffId { get; set; }
-		public DateTime? Date { get; set; }
-		public bool? ShiftType { get; set; }
-		public bool? Status { get; set; }
+		[Column(TypeName = "datetime")]
+		public DateTime? EndDate { get; set; }
+
 	}
 	public class DeleteStaffShift
 	{
@@ -32,7 +27,6 @@ namespace Aesthetics.Entities.Models.RequestModel
 	{
 		public int? Id { get; set; }
 		public int? StaffId { get; set; }
-		public bool? ShiftType { get; set; }
 		public DateTime? Date { get; set; }
 	}
 }

@@ -1,5 +1,6 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Data.RepositoryInterfaces;
+using Aesthetics.Data.RepositoryServices;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
@@ -29,6 +30,9 @@ namespace Aesthetics.Data.AestheticsServices
 		private readonly IStaffRepository _staffRepository;
 		private readonly ICartProductRepository _cartProductRepository;
 		private readonly IWalletRepository _walletRepository;
+		private readonly IAppointmentRepositoty _appointmentRepository;  // 🆕
+		private readonly ICustomerTreatmentPlansRepository _customerTreatmentPlansRepository;  // 🆕
+		private readonly ICustomerTreatmentSessionsRepository _customerTreatmentSessionsRepository;  // 🆕
 
 		#endregion
 
@@ -45,7 +49,10 @@ namespace Aesthetics.Data.AestheticsServices
 			ICustomerRepository customerRepository,
 			IStaffRepository staffRepository,
 			ICartProductRepository cartProductRepository,
-			IWalletRepository walletRepository)
+			IWalletRepository walletRepository,
+			IAppointmentRepositoty appointmentRepository, 
+			ICustomerTreatmentPlansRepository customerTreatmentPlansRepository,  
+			ICustomerTreatmentSessionsRepository customerTreatmentSessionsRepository)  
 		{
 			_logger = logger;
 			_invoiceRepository = invoiceRepository;
@@ -58,6 +65,9 @@ namespace Aesthetics.Data.AestheticsServices
 			_staffRepository = staffRepository;
 			_cartProductRepository = cartProductRepository;
 			_walletRepository = walletRepository;
+			_appointmentRepository = appointmentRepository;  
+			_customerTreatmentPlansRepository = customerTreatmentPlansRepository;  
+			_customerTreatmentSessionsRepository = customerTreatmentSessionsRepository;  
 		}
 
 		#endregion
@@ -187,7 +197,7 @@ namespace Aesthetics.Data.AestheticsServices
 				{
 					CustomerId = invoice.CustomerId,
 					StaffId = invoice.StaffId,
-					VoucherId = appliedVoucherId,  // ✅ Chỉ set nếu Voucher hợp lệ
+					VoucherId = appliedVoucherId,  
 					TotalMoney = totalMoney,
 					DiscountValue = invoiceDiscountValue,
 					FinalPrice = finalPrice,
@@ -196,7 +206,7 @@ namespace Aesthetics.Data.AestheticsServices
 					DateCreated = DateTime.UtcNow,
 					Status = status,
 					Type = invoice.Type,
-					OrderStatus = "DangXuLy",
+					OrderStatus = "DangChoXuLy",
 					PaymentMethod = invoice.PaymentMethod ?? "ThanhToanOnline",
 					DeleteStatus = false
 				};
@@ -342,20 +352,15 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-		/// <summary>
-		/// LẤY CHI TIẾT ĐẦY ĐỦ CỦA MỘT HÓA ĐƠN
-		/// </summary>
-		/// <summary>
-		/// LẤY DANH SÁCH HÓA ĐƠN CÓ PHÂN TRANG VÀ LỌC (trả về Response Model)
-		/// </summary>
 		public async Task<BaseDataCollection<InvoiceDetailFullResponseModel>> GetInvoiceDetails(GetInvoice filter)
 		{
 			try
 			{
 				_logger.LogInformation("GET_INVOICE_DETAILS_START: Lấy danh sách hóa đơn với filter - " +
-					"CustomerId: {CustomerId}, StaffId: {StaffId}, Type: {Type}, Status: {Status}, " +
+					"CustomerId: {CustomerId}, StaffId: {StaffId}, Type: {Type}, Status: {Status}, OrderStatuses: {OrderStatuses}, " +
 					"StartDate: {StartDate}, EndDate: {EndDate}, PageNo: {PageNo}, PageSize: {PageSize}",
 					filter?.CustomerId, filter?.StaffId, filter?.Type, filter?.Status,
+					string.Join(", ", filter?.OrderStatuses ?? new List<string>()),
 					filter?.StartDate?.Date, filter?.EndDate?.Date, filter?.PageNo, filter?.PageSize);
 
 				// ✅ BƯỚC 1: Validate filter
@@ -406,6 +411,21 @@ namespace Aesthetics.Data.AestheticsServices
 					_logger.LogInformation("GET_INVOICE_DETAILS_FILTER_STATUS: Lọc theo Status {Status}", status);
 				}
 
+				// 🆕 Lọc theo danh sách OrderStatuses (DangChoXuLy, DangGiao, DaGiao, KhachHuy)
+				if (filter.OrderStatuses != null && filter.OrderStatuses.Count > 0)
+				{
+					var validOrderStatuses = filter.OrderStatuses
+						.Where(os => !string.IsNullOrEmpty(os) && os != "null")
+						.ToList();
+
+					if (validOrderStatuses.Count > 0)
+					{
+						predicate = predicate.And(x => validOrderStatuses.Contains(x.OrderStatus));
+						_logger.LogInformation("GET_INVOICE_DETAILS_FILTER_ORDER_STATUSES: Lọc theo OrderStatuses {OrderStatuses}",
+							string.Join(", ", validOrderStatuses));
+					}
+				}
+
 				// Lọc theo StartDate
 				if (filter.StartDate.HasValue)
 				{
@@ -424,7 +444,7 @@ namespace Aesthetics.Data.AestheticsServices
 
 				// ✅ BƯỚC 3: Lấy danh sách hóa đơn thỏa mãn điều kiện (với Include related data)
 				var allInvoices = await _invoiceRepository.FindByPredicate(predicate);
-				
+
 				// ✅ Eager load related entities
 				var invoicesWithDetails = allInvoices
 					.AsEnumerable()
@@ -691,80 +711,94 @@ namespace Aesthetics.Data.AestheticsServices
 		}
 
 		/// <summary>
-		/// CẬP NHẬT TRẠNG THÁI GIAO HÀNG CỦA HÓA ĐƠN
-		/// 
-		/// LUỒNG XỬ LÝ:
-		/// 1. Validate dữ liệu đầu vào
-		/// 2. Lấy hóa đơn từ database, kiểm tra tồn tại
-		/// 3. Validate trạng thái giao hàng hợp lệ (DangXuLy, DaGiao, DaHuy)
-		/// 4. Cập nhật OrderStatus của Invoice
-		/// 5. Lưu vào database
-		/// 6. Log kết quả
+		/// 🆕 Cập nhật OrderStatus cho hóa đơn (Update thủ công)
+		/// Dùng để update trạng thái giao hàng: DangChoXuLy → DangGiao → DaGiao → KhachHuy
 		/// </summary>
-		public async Task<bool> UpdateInvoiceOrderStatus(updateinvoiceorderstatus updateinvoiceorderstatus)
+		public async Task<bool> UpdateInvoiceOrderStatus(updateinvoiceorderstatus request)
 		{
 			try
 			{
-				_logger.LogInformation("UPDATE_ORDER_START: Cập nhật trạng thái giao hàng - " +
-					"HóaĐơnID {InvoiceId}, OrderStatus: {OrderStatus}",
-					updateinvoiceorderstatus.invoiceId, updateinvoiceorderstatus.orderStatus);
+				_logger.LogInformation("UPDATE_INVOICE_ORDER_STATUS_START: Cập nhật OrderStatus hóa đơn - InvoiceId: {InvoiceId}, OrderStatus: {OrderStatus}",
+					request.invoiceId, request.orderStatus);
 
-				// BƯỚC 1: Validate dữ liệu đầu vào
-				if (updateinvoiceorderstatus.invoiceId <= 0)
+				// ✅ STEP 1: Validate OrderStatus
+				var validStatuses = new[] { "DangChoXuLy", "DangGiao", "DaGiao", "KhachHuy" };
+				if (!validStatuses.Contains(request.orderStatus))
 				{
-					_logger.LogWarning("UPDATE_ORDER_INVALID_INPUT: InvoiceId không hợp lệ - InvoiceId: {InvoiceId}", updateinvoiceorderstatus.invoiceId);
+					_logger.LogWarning("UPDATE_INVOICE_ORDER_STATUS_INVALID: OrderStatus không hợp lệ - InvoiceId: {InvoiceId}, OrderStatus: {OrderStatus}",
+						request.invoiceId, request.orderStatus);
 					return false;
 				}
 
-				if (string.IsNullOrWhiteSpace(updateinvoiceorderstatus.orderStatus))
-				{
-					_logger.LogWarning("UPDATE_ORDER_EMPTY_STATUS: OrderStatus không được để trống");
-					return false;
-				}
-
-				// BƯỚC 2: Validate trạng thái giao hàng hợp lệ
-				var validOrderStatuses = new[] { "DangXuLy", "DaGiao", "DaHuy" };
-				if (!validOrderStatuses.Contains(updateinvoiceorderstatus.orderStatus))
-				{
-					_logger.LogWarning("UPDATE_ORDER_INVALID: Trạng thái giao hàng không hợp lệ: {OrderStatus}. " +
-						"Chỉ chấp nhận: {ValidStatuses}",
-						updateinvoiceorderstatus.orderStatus, string.Join(", ", validOrderStatuses));
-					return false;
-				}
-
-				// BƯỚC 3: Lấy hóa đơn từ database
-				var invoice = await _invoiceRepository.GetById(updateinvoiceorderstatus.invoiceId);
+				// ✅ STEP 2: Lấy hóa đơn từ database
+				var invoice = await _invoiceRepository.GetById(request.invoiceId);
 				if (invoice == null || invoice.DeleteStatus)
 				{
-					_logger.LogWarning("UPDATE_ORDER_NOT_FOUND: Hóa đơn không tồn tại - HóaĐơnID {InvoiceId}", updateinvoiceorderstatus.invoiceId);
+					_logger.LogWarning("UPDATE_INVOICE_ORDER_STATUS_NOT_FOUND: Hóa đơn không tồn tại - InvoiceId: {InvoiceId}",
+						request.invoiceId);
 					return false;
 				}
 
-				_logger.LogInformation("UPDATE_ORDER_FOUND: Tìm thấy hóa đơn - OrderStatus cũ: {OldStatus}",
-					invoice.OrderStatus);
-
-				// BƯỚC 4: Cập nhật OrderStatus của Invoice
-				string oldOrderStatus = invoice.OrderStatus;
-				invoice.OrderStatus = updateinvoiceorderstatus.orderStatus;
-				var invoiceUpdated = await _invoiceRepository.UpdateEntity(invoice);
-
-				if (!invoiceUpdated)
+				// ✅ STEP 3: Kiểm tra OrderStatus hiện tại
+				string oldOrderStatus = invoice.OrderStatus ?? "N/A";
+				if (oldOrderStatus == request.orderStatus)
 				{
-					_logger.LogError("UPDATE_ORDER_FAILED: Cập nhật hóa đơn thất bại - HóaĐơnID {InvoiceId}", updateinvoiceorderstatus.invoiceId);
+					_logger.LogInformation("UPDATE_INVOICE_ORDER_STATUS_NO_CHANGE: OrderStatus không thay đổi - InvoiceId: {InvoiceId}, OrderStatus: {OrderStatus}",
+						request.invoiceId, request.orderStatus);
+					return true; // Không cần update
+				}
+
+				// ✅ STEP 4: Cập nhật OrderStatus
+				invoice.OrderStatus = request.orderStatus;
+
+				// ✅ STEP 5: Lưu vào database
+				var updated = await _invoiceRepository.UpdateEntity(invoice);
+				if (!updated)
+				{
+					_logger.LogError("UPDATE_INVOICE_ORDER_STATUS_FAILED: Cập nhật hóa đơn thất bại - InvoiceId: {InvoiceId}",
+						request.invoiceId);
 					return false;
 				}
 
-				// BƯỚC 5: Log kết quả thành công
-				_logger.LogInformation("UPDATE_ORDER_SUCCESS: Cập nhật trạng thái giao hàng thành công - " +
-					"HóaĐơnID {InvoiceId}, OrderStatus: {OldStatus} → {NewStatus}",
-					updateinvoiceorderstatus.invoiceId, oldOrderStatus, updateinvoiceorderstatus.orderStatus);
+				_logger.LogInformation("UPDATE_INVOICE_ORDER_STATUS_SUCCESS: Cập nhật OrderStatus thành công - InvoiceId: {InvoiceId}, OldOrderStatus: {OldOrderStatus}, NewOrderStatus: {NewOrderStatus}",
+					request.invoiceId, oldOrderStatus, request.orderStatus);
 
 				return true;
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "UPDATE_ORDER_EXCEPTION: Lỗi ngoại lệ - HóaĐơnID {InvoiceId}", updateinvoiceorderstatus.invoiceId);
+				_logger.LogError(ex, "UPDATE_INVOICE_ORDER_STATUS_EXCEPTION: Lỗi khi cập nhật OrderStatus - InvoiceId: {InvoiceId}",
+					request.invoiceId);
 				return false;
+			}
+		}
+
+		/// <summary>
+		/// 🆕 Lấy danh sách OrderStatus có sẵn
+		/// </summary>
+		public async Task<List<string>> GetAvailableOrderStatuses()
+		{
+			try
+			{
+				_logger.LogInformation("GET_AVAILABLE_ORDER_STATUSES: Lấy danh sách OrderStatus");
+
+				var statuses = new List<string>
+				{
+					"DangChoXuLy",  // Đang chờ xử lý
+					"DangXuLy",		// Đang xử lý
+					"DangGiao",     // Đang giao
+					"DaGiao",       // Đã giao
+					"KhachHuy"         // Đã hủy
+				};
+
+				_logger.LogInformation("GET_AVAILABLE_ORDER_STATUSES_SUCCESS: Danh sách OrderStatus - Count: {Count}", statuses.Count);
+
+				return await Task.FromResult(statuses);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "GET_AVAILABLE_ORDER_STATUSES_EXCEPTION: Lỗi khi lấy danh sách OrderStatus");
+				return new List<string>();
 			}
 		}
 		#endregion
@@ -1075,5 +1109,397 @@ namespace Aesthetics.Data.AestheticsServices
 		}
 
 		#endregion
+
+		/// <summary>
+		/// 🆕 Update Status Invoice với các logic liên kết:
+		/// - Nếu invoice status = "KhachHuy" → Update InvoiceDetail status = "KhachHuy"
+		///   và cập nhật Appointment, CustomerTreatmentPlan, CustomerTreatmentSession = "KhachHuy"
+		/// - Nếu invoice status = "ChuaThanhToan" → Update InvoiceDetail status = "ChuaThanhToan"
+		/// </summary>
+		public async Task<bool> UpdateInvoiceStatus(int invoiceId, string newStatus)
+		{
+			try
+			{
+				_logger.LogInformation("UPDATE_INVOICE_STATUS_START: Cập nhật status hóa đơn - InvoiceId: {InvoiceId}, NewStatus: {NewStatus}",
+					invoiceId, newStatus);
+
+				// ✅ STEP 1: Validate newStatus
+				var validStatuses = new[] { "ChuaThanhToan", "ThanhToanMotPhan", "DaThanhToan", "KhachHuy" };
+				if (!validStatuses.Contains(newStatus))
+				{
+					_logger.LogWarning("UPDATE_INVOICE_STATUS_INVALID_STATUS: Status không hợp lệ - InvoiceId: {InvoiceId}, Status: {Status}",
+						invoiceId, newStatus);
+					return false;
+				}
+
+				// ✅ STEP 2: Lấy hóa đơn từ database
+				var invoice = await _invoiceRepository.GetById(invoiceId);
+				if (invoice == null || invoice.DeleteStatus)
+				{
+					_logger.LogWarning("UPDATE_INVOICE_STATUS_NOT_FOUND: Hóa đơn không tồn tại - InvoiceId: {InvoiceId}",
+						invoiceId);
+					return false;
+				}
+
+				// ✅ STEP 3: Kiểm tra status hiện tại
+				string oldStatus = invoice.Status ?? "N/A";
+				if (oldStatus == newStatus)
+				{
+					_logger.LogInformation("UPDATE_INVOICE_STATUS_NO_CHANGE: Status không thay đổi - InvoiceId: {InvoiceId}, Status: {Status}",
+						invoiceId, newStatus);
+					return true; // Không cần update
+				}
+
+				// ✅ STEP 4: Cập nhật status Invoice
+				invoice.Status = newStatus;
+				var invoiceUpdated = await _invoiceRepository.UpdateEntity(invoice);
+				if (!invoiceUpdated)
+				{
+					_logger.LogError("UPDATE_INVOICE_STATUS_UPDATE_FAILED: Cập nhật hóa đơn thất bại - InvoiceId: {InvoiceId}",
+						invoiceId);
+					return false;
+				}
+
+				_logger.LogInformation("UPDATE_INVOICE_STATUS_UPDATED: Hóa đơn được cập nhật - InvoiceId: {InvoiceId}, OldStatus: {OldStatus}, NewStatus: {NewStatus}",
+					invoiceId, oldStatus, newStatus);
+
+				// ✅ STEP 5: Cập nhật InvoiceDetail
+				await UpdateInvoiceDetailsStatusByInvoiceId(invoiceId, newStatus);
+
+				// ✅ STEP 6: Nếu status = "KhachHuy" → Update Appointment, CustomerTreatmentPlan, CustomerTreatmentSession
+				if (newStatus == "KhachHuy")
+				{
+					_logger.LogInformation("UPDATE_INVOICE_STATUS_KhachHuy: Invoice bị hủy - cập nhật các entity liên kết - InvoiceId: {InvoiceId}",
+						invoiceId);
+
+					int customerId = invoice.CustomerId ?? 0;
+
+					// Cập nhật Appointment
+					await UpdateAppointmentsByCustomerId(customerId);
+
+					// 🆕 Cập nhật CHỈ CustomerTreatmentSession có TreatmentSessionId trùng với hóa đơn
+					await UpdateCustomerTreatmentSessionsByInvoiceId(invoiceId, customerId);
+				}
+
+				_logger.LogInformation("UPDATE_INVOICE_STATUS_SUCCESS: Cập nhật status hóa đơn thành công - InvoiceId: {InvoiceId}, NewStatus: {NewStatus}",
+					invoiceId, newStatus);
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "UPDATE_INVOICE_STATUS_EXCEPTION: Lỗi khi cập nhật status hóa đơn - InvoiceId: {InvoiceId}",
+					invoiceId);
+				return false;
+			}
+		}
+
+		/// <summary>
+		/// 🆕 Cập nhật status cho tất cả InvoiceDetail của một Invoice
+		/// </summary>
+		private async Task UpdateInvoiceDetailsStatusByInvoiceId(int invoiceId, string newStatus)
+		{
+			try
+			{
+				_logger.LogInformation("UPDATE_INVOICE_DETAILS_STATUS_START: Cập nhật status chi tiết hóa đơn - InvoiceId: {InvoiceId}, NewStatus: {NewStatus}",
+					invoiceId, newStatus);
+
+				var details = await _invoiceDetailsRepository.FindByPredicate(x =>
+					x.InvoiceId == invoiceId && !x.DeleteStatus);
+
+				if (!details.Any())
+				{
+					_logger.LogInformation("UPDATE_INVOICE_DETAILS_STATUS_NO_DETAILS: Không có chi tiết hóa đơn - InvoiceId: {InvoiceId}",
+						invoiceId);
+					return;
+				}
+
+				// 🆕 Dùng UpdateRangeEntities để cập nhật tất cả một lần
+				var detailsToUpdate = details.ToList();
+				foreach (var detail in detailsToUpdate)
+				{
+					detail.Status = newStatus;
+				}
+
+				var updated = await _invoiceDetailsRepository.UpdateRangeEntities(detailsToUpdate);
+				if (updated)
+				{
+					_logger.LogInformation("UPDATE_INVOICE_DETAILS_STATUS_SUCCESS: Cập nhật {Count} chi tiết hóa đơn - InvoiceId: {InvoiceId}",
+						detailsToUpdate.Count, invoiceId);
+				}
+				else
+				{
+					_logger.LogWarning("UPDATE_INVOICE_DETAILS_STATUS_PARTIAL: Cập nhật không hoàn toàn - InvoiceId: {InvoiceId}",
+						invoiceId);
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "UPDATE_INVOICE_DETAILS_STATUS_EXCEPTION: Lỗi khi cập nhật status chi tiết - InvoiceId: {InvoiceId}",
+					invoiceId);
+			}
+		}
+
+		/// <summary>
+		/// 🆕 Cập nhật status Appointment thành Cancelled nếu invoice bị hủy
+		/// </summary>
+		private async Task UpdateAppointmentsByCustomerId(int customerId)
+		{
+			try
+			{
+				if (customerId <= 0)
+				{
+					_logger.LogWarning("UPDATE_APPOINTMENTS_INVALID_CUSTOMER: CustomerId không hợp lệ - CustomerId: {CustomerId}",
+						customerId);
+					return;
+				}
+
+				_logger.LogInformation("UPDATE_APPOINTMENTS_START: Cập nhật status Appointment - CustomerId: {CustomerId}", customerId);
+
+				// Tìm appointment liên kết với customer
+				var appointments = await _appointmentRepository.FindByPredicate(x =>
+					x.CustomerId == customerId &&
+					x.Status != 4 &&  // Không update lại nếu đã Cancelled
+					!x.DeleteStatus);
+
+				if (!appointments.Any())
+				{
+					_logger.LogInformation("UPDATE_APPOINTMENTS_NO_APPOINTMENTS: Không tìm thấy appointment - CustomerId: {CustomerId}",
+						customerId);
+					return;
+				}
+
+				// 🆕 Dùng UpdateRangeEntities để cập nhật tất cả một lần
+				var appointmentsToUpdate = appointments.ToList();
+				foreach (var appointment in appointmentsToUpdate)
+				{
+					appointment.Status = 4; // AppointmentStatus.Cancelled
+				}
+
+				var updated = await _appointmentRepository.UpdateRangeEntities(appointmentsToUpdate);
+				if (updated)
+				{
+					_logger.LogInformation("UPDATE_APPOINTMENTS_SUCCESS: Cập nhật {Count} appointment - CustomerId: {CustomerId}",
+						appointmentsToUpdate.Count, customerId);
+				}
+				else
+				{
+					_logger.LogWarning("UPDATE_APPOINTMENTS_PARTIAL: Cập nhật không hoàn toàn - CustomerId: {CustomerId}",
+						customerId);
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "UPDATE_APPOINTMENTS_EXCEPTION: Lỗi khi cập nhật appointment - CustomerId: {CustomerId}",
+					customerId);
+			}
+		}
+
+		/// <summary>
+		/// 🆕 Cập nhật status CustomerTreatmentSession thành "KhachHuy" nếu invoice bị hủy
+		/// CHỈ hủy những session có TreatmentSessionId trùng với TreatmentSessionId trong hóa đơn
+		/// </summary>
+		private async Task UpdateCustomerTreatmentSessionsByInvoiceId(int invoiceId, int customerId)
+		{
+			try
+			{
+				if (invoiceId <= 0 || customerId <= 0)
+				{
+					_logger.LogWarning("UPDATE_CUSTOMER_TREATMENT_SESSIONS_INVALID_PARAMS: Tham số không hợp lệ - InvoiceId: {InvoiceId}, CustomerId: {CustomerId}",
+						invoiceId, customerId);
+					return;
+				}
+
+				_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_SESSIONS_START: Cập nhật status CustomerTreatmentSession - InvoiceId: {InvoiceId}, CustomerId: {CustomerId}",
+					invoiceId, customerId);
+
+				// ✅ STEP 1: Lấy hóa đơn để tìm TreatmentSessionId
+				var invoice = await _invoiceRepository.GetById(invoiceId);
+				if (invoice == null || invoice.DeleteStatus)
+				{
+					_logger.LogWarning("UPDATE_CUSTOMER_TREATMENT_SESSIONS_INVOICE_NOT_FOUND: Hóa đơn không tồn tại - InvoiceId: {InvoiceId}",
+						invoiceId);
+					return;
+				}
+
+				// ✅ STEP 2: Nếu hóa đơn không có TreatmentSessionId → không cần update session
+				if (!invoice.TreatmentSessionId.HasValue)
+				{
+					_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_SESSIONS_NO_TREATMENT_SESSION: Hóa đơn không phải liệu trình - InvoiceId: {InvoiceId}",
+						invoiceId);
+					return;
+				}
+
+				int treatmentSessionId = invoice.TreatmentSessionId.Value;
+				_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_SESSIONS_FOUND_SESSION: Tìm session để hủy - TreatmentSessionId: {TreatmentSessionId}",
+					treatmentSessionId);
+
+				// ✅ STEP 3: Lấy CustomerTreatmentPlan của khách hàng
+				var customerPlans = await _customerTreatmentPlansRepository.FindByPredicate(x =>
+					x.CustomerId == customerId &&
+					!x.DeleteStatus);
+
+				if (!customerPlans.Any())
+				{
+					_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_SESSIONS_NO_PLANS: Khách hàng không có plan - CustomerId: {CustomerId}",
+						customerId);
+					return;
+				}
+
+				// ✅ STEP 4: Tìm CustomerTreatmentSession có TreatmentSessionId trùng với hóa đơn
+				var allSessionsToUpdate = new List<CustomerTreatmentSessionEntity>();
+				var plansToUpdateStatus = new List<CustomerTreatmentPlanEntity>();
+
+				foreach (var plan in customerPlans)
+				{
+					var matchingSessions = await _customerTreatmentSessionsRepository.FindByPredicate(x =>
+						x.CustomerTreatmentPlanId == plan.Id &&
+						x.TreatmentSessionId == treatmentSessionId &&  // 🆕 CHỈ lấy session TRÙNG với invoice
+						x.Status != "KhachHuy" &&  // Không update lại nếu đã KhachHuy
+						!x.DeleteStatus);
+
+					foreach (var session in matchingSessions)
+					{
+						session.Status = "KhachHuy";
+						allSessionsToUpdate.Add(session);
+						_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_SESSIONS_MATCHED: Tìm thấy session cần hủy - SessionId: {SessionId}, PlanId: {PlanId}",
+							session.Id, plan.Id);
+					}
+
+					// 🆕 Nếu plan này có session được update → thêm vào danh sách để update status plan
+					if (matchingSessions.Any())
+					{
+						plansToUpdateStatus.Add(plan);
+					}
+				}
+
+				// ✅ STEP 5: Cập nhật những session đã tìm thấy
+				if (allSessionsToUpdate.Any())
+				{
+					var updated = await _customerTreatmentSessionsRepository.UpdateRangeEntities(allSessionsToUpdate);
+					if (updated)
+					{
+						_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_SESSIONS_SUCCESS: Cập nhật {Count} session(s) - InvoiceId: {InvoiceId}, TreatmentSessionId: {TreatmentSessionId}",
+							allSessionsToUpdate.Count, invoiceId, treatmentSessionId);
+
+						// 🆕 STEP 6: Cập nhật status CustomerTreatmentPlan dựa trên status của child sessions
+						await UpdateCustomerTreatmentPlansStatusBySessionsAsync(plansToUpdateStatus);
+					}
+					else
+					{
+						_logger.LogWarning("UPDATE_CUSTOMER_TREATMENT_SESSIONS_PARTIAL: Cập nhật không hoàn toàn - InvoiceId: {InvoiceId}",
+							invoiceId);
+					}
+				}
+				else
+				{
+					_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_SESSIONS_NO_MATCHING_SESSIONS: Không tìm thấy session trùng - InvoiceId: {InvoiceId}, TreatmentSessionId: {TreatmentSessionId}",
+						invoiceId, treatmentSessionId);
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "UPDATE_CUSTOMER_TREATMENT_SESSIONS_EXCEPTION: Lỗi khi cập nhật session - InvoiceId: {InvoiceId}",
+					invoiceId);
+			}
+		}
+
+		/// <summary>
+		/// 🆕 Cập nhật status CustomerTreatmentPlan dựa trên status của child CustomerTreatmentSessions
+		/// - Nếu TẤT CẢ session = "KhachHuy" → Plan = "KhachHuy"
+		/// - Nếu CÓ session = "KhachHuy" + CÓ session ≠ "KhachHuy" → Plan = "PartialCancelled" hoặc giữ nguyên
+		/// - Nếu KHÔNG CÓ session = "KhachHuy" → Plan = "Active"
+		/// </summary>
+		private async Task UpdateCustomerTreatmentPlansStatusBySessionsAsync(List<CustomerTreatmentPlanEntity> plansToCheck)
+		{
+			try
+			{
+				if (!plansToCheck.Any())
+				{
+					_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_PLANS_STATUS_NO_PLANS: Không có plan để kiểm tra");
+					return;
+				}
+
+				_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_PLANS_STATUS_START: Kiểm tra và cập nhật status plans - Count: {Count}",
+					plansToCheck.Count);
+
+				var plansToUpdate = new List<CustomerTreatmentPlanEntity>();
+
+				foreach (var plan in plansToCheck)
+				{
+					// Lấy tất cả session của plan
+					var allSessions = await _customerTreatmentSessionsRepository.FindByPredicate(x =>
+						x.CustomerTreatmentPlanId == plan.Id &&
+						!x.DeleteStatus);
+
+					if (!allSessions.Any())
+					{
+						_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_PLANS_STATUS_NO_SESSIONS: Plan không có session - PlanId: {PlanId}",
+							plan.Id);
+						continue;
+					}
+
+					// Đếm số session bị hủy
+					var cancelledSessionsCount = allSessions.Count(s => s.Status == "KhachHuy");
+					var totalSessionsCount = allSessions.Count();
+
+					_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_PLANS_STATUS_SESSION_COUNT: PlanId: {PlanId}, CancelledSessions: {Cancelled}/{Total}",
+						plan.Id, cancelledSessionsCount, totalSessionsCount);
+
+					string newPlanStatus;
+
+					// 🆕 Logic xác định status mới của plan
+					if (cancelledSessionsCount == totalSessionsCount)
+					{
+						// TẤT CẢ session bị hủy → Plan = "KhachHuy"
+						newPlanStatus = "KhachHuy";
+					}
+					else if (cancelledSessionsCount > 0)
+					{
+						// CÓ session bị hủy nhưng còn session khác → Plan = "ChoDatLich" hoặc giữ nguyên
+						newPlanStatus = plan.Status; // Giữ nguyên status hiện tại
+						_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_PLANS_STATUS_PARTIAL: Plan bị hủy một phần - PlanId: {PlanId}, Status: {Status}",
+							plan.Id, newPlanStatus);
+					}
+					else
+					{
+						// KHÔNG CÓ session bị hủy → Plan = "Active" (hoặc giữ nguyên)
+						newPlanStatus = plan.Status; // Giữ nguyên status hiện tại
+					}
+
+					// Chỉ update nếu status thay đổi
+					if (plan.Status != newPlanStatus)
+					{
+						plan.Status = newPlanStatus;
+						plansToUpdate.Add(plan);
+						_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_PLANS_STATUS_CHANGED: Plan status thay đổi - PlanId: {PlanId}, OldStatus: {OldStatus}, NewStatus: {NewStatus}",
+							plan.Id, plan.Status, newPlanStatus);
+					}
+				}
+
+				// ✅ Cập nhật những plan có status thay đổi
+				if (plansToUpdate.Any())
+				{
+					var updated = await _customerTreatmentPlansRepository.UpdateRangeEntities(plansToUpdate);
+					if (updated)
+					{
+						_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_PLANS_STATUS_SUCCESS: Cập nhật {Count} plan status",
+							plansToUpdate.Count);
+					}
+					else
+					{
+						_logger.LogWarning("UPDATE_CUSTOMER_TREATMENT_PLANS_STATUS_PARTIAL: Cập nhật không hoàn toàn");
+					}
+				}
+				else
+				{
+					_logger.LogInformation("UPDATE_CUSTOMER_TREATMENT_PLANS_STATUS_NO_CHANGES: Không có plan nào cần cập nhật");
+				}
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "UPDATE_CUSTOMER_TREATMENT_PLANS_STATUS_EXCEPTION: Lỗi khi cập nhật status plans");
+			}
+		}
 	}
 }

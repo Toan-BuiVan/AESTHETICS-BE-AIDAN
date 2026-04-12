@@ -9,6 +9,7 @@ namespace Aesthetics.Entities.Models.RequestModel
     public class RequestClinic
     {
         public string ClinicName { get; set; }
+		public int? ServiceTypeId { get; set; }
 	}
 
 	public class UpdateClinic

@@ -1,6 +1,7 @@
 ﻿using Aesthetics.DTO.NetCore.DataObject.Model.Momo;
 using Aesthetics.DTO.NetCore.DataObject.Model.VnPay;
 using Aesthetics.Entities.Models.RequestModel;
+using Aesthetics.Entities.Models.ResponseModel;
 using Microsoft.AspNetCore.Http;
 
 namespace Aesthetics.Data.AestheticsInterfaces
@@ -36,5 +37,11 @@ namespace Aesthetics.Data.AestheticsInterfaces
         /// Lấy thông tin thanh toán hóa đơn
         /// </summary>
         Task<InvoicePaymentInfoModel> GetInvoicePaymentInfo(int invoiceId);
-    }
+
+		/// <summary>
+		/// hoàn tiền
+		/// </summary>
+		Task<RefundResponseModel> ProcessRefund(int invoiceId, decimal refundAmount, string refundReason);
+
+	}
 }

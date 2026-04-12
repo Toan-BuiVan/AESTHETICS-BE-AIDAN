@@ -68,6 +68,7 @@ namespace Aesthetics.Entities.Models.ResponseModel
 
 	public class SessionProductInformation
 	{
+		public int? TreatmentSessionId { get; set; }
 		public int? SessionProductId { get; set; }
 		public int? ProductId { get; set; }
 		public string? ProductName { get; set; }

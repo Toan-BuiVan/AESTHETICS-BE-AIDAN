@@ -177,11 +177,11 @@ namespace Aesthetics.Data.AestheticsDbContext
 
 		private static void ConfigureProductRelationships(ModelBuilder builder)
 		{
-			builder.Entity<ProductEntity>()
-				.HasOne(p => p.ServiceType)
-				.WithMany(st => st.Products)
-				.HasForeignKey(p => p.ServiceTypeId)
-				.OnDelete(DeleteBehavior.Cascade);
+			//builder.Entity<ProductEntity>()
+			//	.HasOne(p => p.ServiceType)
+			//	.WithMany(st => st.Products)
+			//	.HasForeignKey(p => p.ServiceTypeId)
+			//	.OnDelete(DeleteBehavior.Cascade);
 
 			builder.Entity<ProductEntity>()
 				.HasOne(p => p.Supplier)

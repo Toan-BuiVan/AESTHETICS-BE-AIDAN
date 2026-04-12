@@ -301,10 +301,10 @@ namespace Aesthetics.Data.AestheticsServices.AI
 
 				var products = await _productRepository.FindByPredicate(x => !x.DeleteStatus);
 
-				if (serviceTypeId.HasValue)
-				{
-					products = products.Where(x => x.ServiceTypeId == serviceTypeId).ToList();
-				}
+				//if (serviceTypeId.HasValue)
+				//{
+				//	products = products.Where(x => x.ServiceTypeId == serviceTypeId).ToList();
+				//}
 
 				// Đếm số lượng bán cho mỗi sản phẩm
 				var productSales = new List<(int ProductId, string ProductName, decimal Price, int SalesCount)>();
@@ -521,10 +521,10 @@ Trả lời chỉ là một số nguyên (3, 5, 7, 10, 14, 21, 30, ...), không 
 					x.SellingPrice <= maxPrice &&
 					!x.DeleteStatus);
 
-				if (serviceTypeId.HasValue)
-				{
-					products = products.Where(x => x.ServiceTypeId == serviceTypeId).ToList();
-				}
+				//if (serviceTypeId.HasValue)
+				//{
+				//	products = products.Where(x => x.ServiceTypeId == serviceTypeId).ToList();
+				//}
 
 				var productList = products.Select(p => new AIProductPrice
 				{
@@ -533,7 +533,7 @@ Trả lời chỉ là một số nguyên (3, 5, 7, 10, 14, 21, 30, ...), không 
 					Price = p.SellingPrice ?? 0,
 					Description = p.Description,
 					Quantity = p.Quantity,
-					ServiceTypeId = p.ServiceTypeId ?? 0
+					//ServiceTypeId = p.ServiceTypeId ?? 0
 				}).OrderBy(x => x.Price).ToList();
 
 				response.Products = productList;
@@ -591,7 +591,7 @@ Trả lời chỉ là một số nguyên (3, 5, 7, 10, 14, 21, 30, ...), không 
 						Price = p.SellingPrice ?? 0,
 						Description = p.Description,
 						Quantity = p.Quantity,
-						ServiceTypeId = p.ServiceTypeId ?? 0
+						//ServiceTypeId = p.ServiceTypeId ?? 0
 					})
 					.OrderBy(x => x.ProductName)
 					.ToList();

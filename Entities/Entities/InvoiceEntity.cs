@@ -49,7 +49,7 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>Trạng thái thanh toán: ChuaThanhToan, ThanhToanMotPhan, DaThanhToan</summary>
 		public string? Status { get; set; }
 
-		/// <summary>Trạng thái giao hàng: DangXuLy, DaGiao, DaHuy</summary>
+		/// <summary>Trạng thái giao hàng: DangXuLy, DaGiao, KhachHuy</summary>
 		public string? OrderStatus { get; set; }
 
 		/// <summary>Phương thức thanh toán: TienMat, ChuyenKhoan, TheNganHang, MoMo, VNPay</summary>

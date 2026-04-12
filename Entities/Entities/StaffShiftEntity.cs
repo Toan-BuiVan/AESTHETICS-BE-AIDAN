@@ -17,11 +17,16 @@ namespace Aesthetics.Entities.Entities
 		[Column(TypeName = "date")]
 		public DateTime? Date { get; set; }
 
-		/// <summary>false = Đã phân, true = Hoàn thành</summary>
-		public bool? Status { get; set; }
+		/// <summary>0 = Đã phân, 1 = Hoàn thành, 2 = Nghỉ </summary>
+		public int? Status { get; set; }
 
-		/// <summary>false = Đã phân, true = Hoàn thành</summary>
-		public bool? ShiftType { get; set; }
+		/// <summary>Thời gian bắt đầu ca</summary>
+		[Column(TypeName = "datetime")]
+		public DateTime? StartDate { get; set; }
+
+		/// <summary>Thời gian kết thúc ca</summary>
+		[Column(TypeName = "datetime")]
+		public DateTime? EndDate { get; set; }
 
 		// Navigation properties
 		[ForeignKey(nameof(StaffId))]

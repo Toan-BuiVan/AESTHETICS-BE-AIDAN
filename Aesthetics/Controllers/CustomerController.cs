@@ -2,6 +2,7 @@
 using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Models.RequestModel;
 using Microsoft.AspNetCore.Components.Web;
+using Aesthetics.Data.RepositoryInterfaces;
 
 namespace Aesthetics.Controllers
 {
@@ -20,6 +21,13 @@ namespace Aesthetics.Controllers
 		public async Task<bool> UpdateCustomer([FromBody] RequestUpdateCustomer request)
 		{
 			return await _customerService.UpdateCustomer(request);
+		}
+
+		[HttpPost("getlistcustomer")]
+		public async Task<IActionResult> getlistcustomer([FromBody] RequestCustomer request)
+		{
+			var result = await _customerService.GetListCustomer(request);
+			return Ok(result);
 		}
 	}
 }

@@ -55,30 +55,30 @@ namespace Aesthetics.Data.AestheticsServices
 				var allMatching = await _staffRepository.FindByPredicate(predicate);
 				var allMatchingList = allMatching.ToList();
 
-				//  Nếu có ServiceTypeId, lọc nhân viên theo loại dịch vụ
-				if (searchRequest.ServicetypeId.HasValue)
-				{
-					var clinicsWithServiceType = await _clinicRepository
-						.FindByPredicate(x => x.ServiceTypeId == searchRequest.ServicetypeId.Value && !x.DeleteStatus);
+				////  Nếu có ServiceTypeId, lọc nhân viên theo loại dịch vụ
+				//if (searchRequest.ServicetypeId.HasValue)
+				//{
+				//	var clinicsWithServiceType = await _clinicRepository
+				//		.FindByPredicate(x => x.ServiceTypeId == searchRequest.ServicetypeId.Value && !x.DeleteStatus);
 
-					var clinicIds = clinicsWithServiceType.Select(c => c.Id).ToList();
+				//	var clinicIds = clinicsWithServiceType.Select(c => c.Id).ToList();
 
-					if (clinicIds.Any())
-					{
-						var staffInClinics = await _clinicStaffRepository
-							.FindByPredicate(x => clinicIds.Contains(x.ClinicId ?? 0) && !x.DeleteStatus);
+				//	if (clinicIds.Any())
+				//	{
+				//		var staffInClinics = await _clinicStaffRepository
+				//			.FindByPredicate(x => clinicIds.Contains(x.ClinicId ?? 0) && !x.DeleteStatus);
 
-						var staffIds = staffInClinics.Select(x => x.StaffId).Distinct().ToList();
-						allMatchingList = allMatchingList
-							.Where(x => staffIds.Contains(x.Id))
-							.ToList();
-					}
-					else
-					{
-						allMatchingList = new List<StaffEntity>();
-					}
-				}
-				else if (searchRequest.ClinicId.HasValue)
+				//		var staffIds = staffInClinics.Select(x => x.StaffId).Distinct().ToList();
+				//		allMatchingList = allMatchingList
+				//			.Where(x => staffIds.Contains(x.Id))
+				//			.ToList();
+				//	}
+				//	else
+				//	{
+				//		allMatchingList = new List<StaffEntity>();
+				//	}
+				//}
+				if (searchRequest.ClinicId.HasValue)
 				{
 					var staffInClinic = await _clinicStaffRepository
 						.FindByPredicate(x => x.ClinicId == searchRequest.ClinicId.Value && !x.DeleteStatus);
@@ -144,6 +144,7 @@ namespace Aesthetics.Data.AestheticsServices
 					IsDoctor = staff.IsDoctor,
 					DoctorLevel = staff.DoctorLevel,
 					Degree = staff.Degree,
+					Email = staff.Email,
 					Specialization = staff.Specialization,
 					LicenseNumber = staff.LicenseNumber,
 					ExperienceYears = staff.ExperienceYears,
@@ -157,8 +158,8 @@ namespace Aesthetics.Data.AestheticsServices
 				}).ToList();
 
 				_logger.LogInformation(
-					"GetList Staff success: Total {Total}, Returned {Returned}, IsDoctor: {IsDoctor}, ClinicId: {ClinicId}, ServiceTypeId: {ServiceTypeId}",
-					totalCount, responseData.Count, searchRequest.IsDoctor, searchRequest.ClinicId, searchRequest.ServicetypeId);
+					"GetList Staff success: Total {Total}, Returned {Returned}, IsDoctor: {IsDoctor}, ClinicId: {ClinicId}",
+					totalCount, responseData.Count, searchRequest.IsDoctor, searchRequest.ClinicId);
 
 				return new BaseDataCollection<StaffResponseModel>(
 					responseData,

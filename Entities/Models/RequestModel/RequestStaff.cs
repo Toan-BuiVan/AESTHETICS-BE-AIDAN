@@ -14,7 +14,6 @@ namespace Aesthetics.Entities.Models.RequestModel
 		/// <summary>Lọc theo phòng khám</summary>
 		public int? ClinicId { get; set; }
 
-		/// <summary>Lọc theo phòng khám</summary>
-		public int? ServicetypeId { get; set; }
+		//public int? AccountId { get; set; }
 	}
 }

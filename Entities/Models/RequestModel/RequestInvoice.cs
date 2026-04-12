@@ -50,6 +50,9 @@ namespace Aesthetics.Entities.Models.RequestModel
 
 		public int? StaffId { get; set; }
 
+		/// <summary>🆕 Lọc theo danh sách OrderStatus: DangChoXuLy, DangGiao, DaGiao, KhachHuy</summary>
+		public List<string>? OrderStatuses { get; set; }
+
 		public string? Type { get; set; }
 
 		/// <summary>Lọc theo trạng thái: ChuaThanhToan, DaThanhToan, ThanhToanMotPhan</summary>
@@ -94,5 +97,17 @@ namespace Aesthetics.Entities.Models.RequestModel
 	{
 		public int invoiceId { get; set; }
 	    public string orderStatus { get; set; }
+	}
+
+	/// <summary>
+	/// Request model để update status Invoice
+	/// </summary>
+	public class UpdateInvoiceStatusRequest
+	{
+		/// <summary>ID hóa đơn</summary>
+		public int InvoiceId { get; set; }
+
+		/// <summary>Status mới: ChuaThanhToan, ThanhToanMotPhan, DaThanhToan, KhachHuy</summary>
+		public string NewStatus { get; set; }
 	}
 }

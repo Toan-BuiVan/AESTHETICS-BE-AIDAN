@@ -1,4 +1,4 @@
-using Aesthetics.Data.AestheticsInterfaces;
+﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
@@ -25,12 +25,12 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
-		[HttpPost("updatepaymentstatus")]
-		public async Task<IActionResult> updatepaymentstatus([FromBody] UpdateInvoicePaymentStatus request)
-		{
-			var result = await _invoiceService.UpdatePaymentStatus(request);
-			return Ok(new { success = result });
-		}
+		//[HttpPost("updatepaymentstatus")]
+		//public async Task<IActionResult> updatepaymentstatus([FromBody] UpdateInvoicePaymentStatus request)
+		//{
+		//	var result = await _invoiceService.UpdatePaymentStatus(request);
+		//	return Ok(new { success = result });
+		//}
 
 		[HttpPost("updateinvoiceorderstatus")]
 		public async Task<IActionResult> updateinvoiceorderstatus([FromBody] updateinvoiceorderstatus request)
@@ -44,6 +44,28 @@ namespace Aesthetics.Controllers
 		{
 			var result = await _invoiceService.GetInvoiceDetails(invoice);
 			return Ok(result);
+		}
+
+		/// <summary>
+		/// 🆕 Update Status Invoice
+		/// POST: /api/invoice/updatestatus
+		/// </summary>
+		[HttpPost("updatestatus")]
+		public async Task<IActionResult> UpdateInvoiceStatus([FromBody] UpdateInvoiceStatusRequest request)
+		{
+			var result = await _invoiceService.UpdateInvoiceStatus(request.InvoiceId, request.NewStatus);
+
+			if (!result)
+			{
+				return BadRequest(new { message = "Cập nhật status hóa đơn thất bại" });
+			}
+
+			return Ok(new
+			{
+				success = true,
+				message = "Cập nhật status hóa đơn thành công",
+				data = new { invoiceId = request.InvoiceId, newStatus = request.NewStatus }
+			});
 		}
 	}
 }

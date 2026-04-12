@@ -9,7 +9,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 {
     public class CreateProduct
     {
-		public int ServiceTypeId { get; set; }
+		//public int ServiceTypeId { get; set; }
 
 		public int SupplierId { get; set; }
 
@@ -33,7 +33,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 	public class updateProduct
 	{
 		public int Id { get; set; }
-		public int? ServiceTypeId { get; set; }
+		//public int? ServiceTypeId { get; set; }
 
 		public int? SupplierId { get; set; }
 
@@ -65,9 +65,9 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public int? Id { get; set; }
 		public string? ProductName { get; set; }
 		public string? SupplierName { get; set; }
-		public string? ServiceTypeName { get; set; }
+		//public string? ServiceTypeName { get; set; }
 		public int? ProductId { get; set; }
-		public int? ServiceTypeId { get; set; }
+		//public int? ServiceTypeId { get; set; }
 		public int? SupplierId { get; set; }
 	}
 

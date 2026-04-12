@@ -24,6 +24,5 @@ namespace Aesthetics.Entities.Entities
 
 		// Navigation properties
 		public virtual ICollection<ServiceEntity> Services { get; set; } = [];
-		public virtual ICollection<ProductEntity> Products { get; set; } = [];
 	}
 }
