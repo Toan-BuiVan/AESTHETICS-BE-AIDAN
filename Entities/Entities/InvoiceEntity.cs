@@ -61,6 +61,9 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>Loại hóa đơn: BanHang, etc</summary>
 		public string? Type { get; set; }
 
+		/// <summary>✅ Mã giao dịch từ VNPay/Momo</summary>
+		public string? TransactionId { get; set; }
+
 		// ✅ Navigation properties
 		public virtual CustomerEntity? Customer { get; set; }
 		public virtual StaffEntity? Staff { get; set; }

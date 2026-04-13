@@ -1,5 +1,6 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Data.RepositoryInterfaces;
+using Aesthetics.Data.RepositoryServices;
 using Aesthetics.DTO.NetCore.DataObject.Model.Momo;
 using Aesthetics.DTO.NetCore.DataObject.Model.VnPay;
 using Aesthetics.Entities.Entities;
@@ -20,16 +21,23 @@ namespace Aesthetics.Data.AestheticsServices
         private readonly ILogger<InvoicePaymentService> _logger;
         private readonly IInvoiceRepository _invoiceRepository;
         private readonly IInvoiceDetailsRepository _invoiceDetailsRepository;
+		private readonly IStaffRepository _staffRepository;
+		private readonly ICustomerRepository _customerRepository;
 
         public InvoicePaymentService(
             ILogger<InvoicePaymentService> logger,
             IInvoiceRepository invoiceRepository,
-            IInvoiceDetailsRepository invoiceDetailsRepository)
+            IInvoiceDetailsRepository invoiceDetailsRepository,
+			IStaffRepository staffRepository,
+			ICustomerRepository customerRepository)
         {
             _logger = logger;
             _invoiceRepository = invoiceRepository;
             _invoiceDetailsRepository = invoiceDetailsRepository;
-        }
+			_staffRepository = staffRepository;
+			_customerRepository = customerRepository;
+
+		}
 
 		/// <summary>
 		/// Tạo Payment Model cho VNPay từ thông tin hóa đơn
@@ -156,21 +164,22 @@ namespace Aesthetics.Data.AestheticsServices
             {
                 _logger.LogInformation("PROCESS_VNPAY_CALLBACK_START: Xử lý callback từ VNPay");
 
-                var vnpTxnRef = collections["vnp_TxnRef"].ToString();
-                var vnpAmount = collections["vnp_Amount"].ToString();
-                var vnpResponseCode = collections["vnp_ResponseCode"].ToString();
-                var vnpOrderInfo = collections["vnp_OrderInfo"].ToString();
+				var vnpTxnRef = collections["vnp_TxnRef"].ToString();
+				var vnpAmount = collections["vnp_Amount"].ToString();
+				var vnpResponseCode = collections["vnp_ResponseCode"].ToString();
+				var vnpOrderInfo = collections["vnp_OrderInfo"].ToString();
+				var vnpTransactionNo = collections["vnp_TransactionNo"].ToString();
 
-                _logger.LogInformation("PROCESS_VNPAY_CALLBACK_DATA: TxnRef: {TxnRef}, Amount: {Amount}, ResponseCode: {ResponseCode}, OrderInfo: {OrderInfo}",
-                    vnpTxnRef, vnpAmount, vnpResponseCode, vnpOrderInfo);
+				_logger.LogInformation("PROCESS_VNPAY_CALLBACK_DATA: TxnRef: {TxnRef}, Amount: {Amount}, ResponseCode: {ResponseCode}, OrderInfo: {OrderInfo}, TransactionNo: {TransactionNo}",
+					vnpTxnRef, vnpAmount, vnpResponseCode, vnpOrderInfo, vnpTransactionNo);
 
-                if (vnpResponseCode != "00")
-                {
-                    _logger.LogWarning("PROCESS_VNPAY_CALLBACK_FAILED: Thanh toán VNPay thất bại - ResponseCode: {ResponseCode}", vnpResponseCode);
-                    return false;
-                }
+				if (vnpResponseCode != "00")
+				{
+					_logger.LogWarning("PROCESS_VNPAY_CALLBACK_FAILED: Thanh toán VNPay thất bại - ResponseCode: {ResponseCode}", vnpResponseCode);
+					return false;
+				}
 
-                if (!decimal.TryParse(vnpAmount, out decimal amountVnp))
+				if (!decimal.TryParse(vnpAmount, out decimal amountVnp))
                 {
                     _logger.LogWarning("PROCESS_VNPAY_CALLBACK_INVALID_AMOUNT: Số tiền không hợp lệ - Amount: {Amount}", vnpAmount);
                     return false;
@@ -195,19 +204,19 @@ namespace Aesthetics.Data.AestheticsServices
                     return false;
                 }
 
-                // Cập nhật thanh toán hóa đơn
-                var isUpdated = await UpdateInvoicePayment(invoiceId, actualAmount, "VNPay");
-                if (!isUpdated)
-                {
-                    _logger.LogError("PROCESS_VNPAY_CALLBACK_UPDATE_FAILED: Cập nhật hóa đơn thất bại - InvoiceId: {InvoiceId}", invoiceId);
-                    return false;
-                }
+				// Cập nhật thanh toán hóa đơn
+				var isUpdated = await UpdateInvoicePaymentWithTransaction(invoiceId, actualAmount, "VNPay", vnpTransactionNo);
+				if (!isUpdated)
+				{
+					_logger.LogError("PROCESS_VNPAY_CALLBACK_UPDATE_FAILED: Cập nhật hóa đơn thất bại - InvoiceId: {InvoiceId}", invoiceId);
+					return false;
+				}
 
-                _logger.LogInformation("PROCESS_VNPAY_CALLBACK_SUCCESS: Callback VNPay được xử lý thành công - InvoiceId: {InvoiceId}, Amount: {Amount:C}",
-                    invoiceId, actualAmount);
+				_logger.LogInformation("PROCESS_VNPAY_CALLBACK_SUCCESS: Callback VNPay được xử lý thành công - InvoiceId: {InvoiceId}, Amount: {Amount:C}, TransactionNo: {TransactionNo}",
+					invoiceId, actualAmount, vnpTransactionNo);
 
-                return true;
-            }
+				return true;
+			}
             catch (Exception ex)
             {
                 _logger.LogError(ex, "PROCESS_VNPAY_CALLBACK_EXCEPTION: Lỗi khi xử lý callback VNPay");
@@ -340,15 +349,16 @@ namespace Aesthetics.Data.AestheticsServices
             {
                 _logger.LogInformation("PROCESS_MOMO_CALLBACK_START: Xử lý callback từ Momo");
 
-                var orderId = collections["orderId"].ToString();
-                var amount = collections["amount"].ToString();
-                var errorCode = collections["errorCode"].ToString();
+				var orderId = collections["orderId"].ToString();
+				var amount = collections["amount"].ToString();
+				var errorCode = collections["errorCode"].ToString();
+				var transId = collections["transId"].ToString(); // ✅ Lấy mã giao dịch từ Momo
 
-                _logger.LogInformation("PROCESS_MOMO_CALLBACK_DATA: OrderId: {OrderId}, Amount: {Amount}, ErrorCode: {ErrorCode}",
-                    orderId, amount, errorCode);
+				_logger.LogInformation("PROCESS_MOMO_CALLBACK_DATA: OrderId: {OrderId}, Amount: {Amount}, ErrorCode: {ErrorCode}, TransId: {TransId}",
+					orderId, amount, errorCode, transId);
 
-                // ✅ Parse OrderId để lấy InvoiceId (format: "92_637893284957812345")
-                if (string.IsNullOrEmpty(orderId) || !orderId.Contains("_"))
+				// ✅ Parse OrderId để lấy InvoiceId (format: "92_637893284957812345")
+				if (string.IsNullOrEmpty(orderId) || !orderId.Contains("_"))
                 {
                     _logger.LogWarning("PROCESS_MOMO_CALLBACK_INVALID_ORDER_ID: OrderId không hợp lệ - OrderId: {OrderId}", orderId);
                     return false;
@@ -373,19 +383,19 @@ namespace Aesthetics.Data.AestheticsServices
                     return false;
                 }
 
-                // Cập nhật thanh toán hóa đơn
-                var isUpdated = await UpdateInvoicePayment(invoiceId, parsedAmount, "Momo");
-                if (!isUpdated)
-                {
-                    _logger.LogError("PROCESS_MOMO_CALLBACK_UPDATE_FAILED: Cập nhật hóa đơn thất bại - InvoiceId: {InvoiceId}", invoiceId);
-                    return false;
-                }
+				// Cập nhật thanh toán hóa đơn
+				var isUpdated = await UpdateInvoicePaymentWithTransaction(invoiceId, parsedAmount, "Momo", transId);
+				if (!isUpdated)
+				{
+					_logger.LogError("PROCESS_MOMO_CALLBACK_UPDATE_FAILED: Cập nhật hóa đơn thất bại - InvoiceId: {InvoiceId}", invoiceId);
+					return false;
+				}
 
-                _logger.LogInformation("PROCESS_MOMO_CALLBACK_SUCCESS: Callback Momo được xử lý thành công - InvoiceId: {InvoiceId}, Amount: {Amount:C}",
-                    invoiceId, parsedAmount);
+				_logger.LogInformation("PROCESS_MOMO_CALLBACK_SUCCESS: Callback Momo được xử lý thành công - InvoiceId: {InvoiceId}, Amount: {Amount:C}, TransId: {TransId}",
+					invoiceId, parsedAmount, transId);
 
-                return true;
-            }
+				return true;
+			}
             catch (Exception ex)
             {
                 _logger.LogError(ex, "PROCESS_MOMO_CALLBACK_EXCEPTION: Lỗi khi xử lý callback Momo");
@@ -441,7 +451,6 @@ namespace Aesthetics.Data.AestheticsServices
 
         /// <summary>
         /// Update tiền thanh toán & trạng thái hóa đơn
-        /// (FUNCTION CỦA BẠN - ĐÃ CÓ)
         /// </summary>
         public async Task<bool> UpdateInvoicePayment(int invoiceId, decimal paidAmount, string paymentMethod)
         {
@@ -507,7 +516,25 @@ namespace Aesthetics.Data.AestheticsServices
                 // ✅ UPDATE TẤT CẢ INVOICEDETAILS
                 await UpdateInvoiceDetailsStatus(invoiceId, status);
 
-                return true;
+				if (paidAmount > 0)
+				{
+					_logger.LogInformation("UPDATE_INVOICE_PAYMENT_ADD_POINTS_START: Cộng điểm thanh toán - InvoiceId: {InvoiceId}, PaidAmount: {PaidAmount:C}",
+						invoiceId, paidAmount);
+
+					// ✅ Cộng điểm mua hàng cho khách hàng
+					if (invoice.CustomerId.HasValue)
+					{
+						await AddPurchasePointsToCustomer(invoice.CustomerId.Value, paidAmount, invoiceId);
+					}
+
+					// ✅ Cộng điểm bán hàng cho nhân viên
+					if (invoice.StaffId.HasValue)
+					{
+						await AddSalesPointsToStaff(invoice.StaffId.Value, paidAmount, invoiceId);
+					}
+				}
+
+				return true;
             }
             catch (Exception ex)
             {
@@ -516,10 +543,109 @@ namespace Aesthetics.Data.AestheticsServices
             }
         }
 
-        /// <summary>
-        /// Lấy thông tin thanh toán mới nhất của hóa đơn
-        /// </summary>
-        public async Task<InvoicePaymentInfoModel> GetInvoicePaymentInfo(int invoiceId)
+
+		/// <summary>
+		/// ✅ Cộng điểm mua hàng cho khách hàng
+		/// Công thức: 1 điểm = 10000 VND
+		/// </summary>
+		private async Task<bool> AddPurchasePointsToCustomer(int customerId, decimal invoiceAmount, int invoiceId)
+		{
+			try
+			{
+				_logger.LogInformation("ADD_PURCHASE_POINTS_START: Cộng điểm mua hàng - CustomerId: {CustomerId}, Amount: {Amount:C}, InvoiceId: {InvoiceId}",
+					customerId, invoiceAmount, invoiceId);
+
+				var customer = await _customerRepository.GetById(customerId);
+				if (customer == null || customer.DeleteStatus)
+				{
+					_logger.LogWarning("ADD_PURCHASE_POINTS_CUSTOMER_NOT_FOUND: Khách hàng không tồn tại - CustomerId: {CustomerId}", customerId);
+					return false;
+				}
+
+				// ✅ Tính điểm: 1 điểm = 1000 VND (có thể điều chỉnh hệ số)
+				int pointsToAdd = (int)(invoiceAmount / 10000);
+
+				if (pointsToAdd <= 0)
+				{
+					_logger.LogInformation("ADD_PURCHASE_POINTS_NO_POINTS: Số tiền không đủ để cộng điểm - Amount: {Amount:C}, Required: 1000", invoiceAmount);
+					return true; // Không lỗi, chỉ không cộng
+				}
+
+				// ✅ Cộng điểm vào RatingPoints
+				customer.RatingPoints = (customer.RatingPoints) + pointsToAdd;
+
+				var updated = await _customerRepository.UpdateEntity(customer);
+				if (!updated)
+				{
+					_logger.LogError("ADD_PURCHASE_POINTS_FAILED: Cộng điểm thất bại - CustomerId: {CustomerId}", customerId);
+					return false;
+				}
+
+				_logger.LogInformation("ADD_PURCHASE_POINTS_SUCCESS: ✅ Cộng {Points} điểm mua hàng cho khách hàng - CustomerId: {CustomerId}, NewRatingPoints: {NewRatingPoints}, InvoiceId: {InvoiceId}",
+					pointsToAdd, customerId, customer.RatingPoints, invoiceId);
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "ADD_PURCHASE_POINTS_EXCEPTION: Lỗi khi cộng điểm mua hàng - CustomerId: {CustomerId}", customerId);
+				return false;
+			}
+		}
+
+		/// <summary>
+		/// ✅ Cộng điểm bán hàng cho nhân viên
+		/// Công thức: 1 điểm = 20000 VND (có thể điều chỉnh)
+		/// </summary>
+		private async Task<bool> AddSalesPointsToStaff(int staffId, decimal invoiceAmount, int invoiceId)
+		{
+			try
+			{
+				_logger.LogInformation("ADD_SALES_POINTS_START: Cộng điểm bán hàng - StaffId: {StaffId}, Amount: {Amount:C}, InvoiceId: {InvoiceId}",
+					staffId, invoiceAmount, invoiceId);
+
+				var staff = await _staffRepository.GetById(staffId);
+				if (staff == null || staff.DeleteStatus)
+				{
+					_logger.LogWarning("ADD_SALES_POINTS_STAFF_NOT_FOUND: Nhân viên không tồn tại - StaffId: {StaffId}", staffId);
+					return false;
+				}
+
+				// ✅ Tính điểm: 1 điểm = 20000 VND (có thể điều chỉnh hệ số)
+				int pointsToAdd = (int)(invoiceAmount / 20000);
+
+				if (pointsToAdd <= 0)
+				{
+					_logger.LogInformation("ADD_SALES_POINTS_NO_POINTS: Số tiền không đủ để cộng điểm - Amount: {Amount:C}, Required: 5000", invoiceAmount);
+					return true; // Không lỗi, chỉ không cộng
+				}
+
+				// ✅ Cộng điểm vào SalesPoints
+				staff.SalesPoints = (staff.SalesPoints ?? 0) + pointsToAdd;
+
+				var updated = await _staffRepository.UpdateEntity(staff);
+				if (!updated)
+				{
+					_logger.LogError("ADD_SALES_POINTS_FAILED: Cộng điểm thất bại - StaffId: {StaffId}", staffId);
+					return false;
+				}
+
+				_logger.LogInformation("ADD_SALES_POINTS_SUCCESS: ✅ Cộng {Points} điểm bán hàng cho nhân viên - StaffId: {StaffId}, NewSalesPoints: {NewSalesPoints}, InvoiceId: {InvoiceId}",
+					pointsToAdd, staffId, staff.SalesPoints, invoiceId);
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "ADD_SALES_POINTS_EXCEPTION: Lỗi khi cộng điểm bán hàng - StaffId: {StaffId}", staffId);
+				return false;
+			}
+		}
+
+		/// <summary>
+		/// Lấy thông tin thanh toán mới nhất của hóa đơn
+		/// </summary>
+		public async Task<InvoicePaymentInfoModel> GetInvoicePaymentInfo(int invoiceId)
         {
             try
             {
@@ -659,264 +785,243 @@ namespace Aesthetics.Data.AestheticsServices
         {
             try
             {
-                _logger.LogInformation(
-                    "PROCESS_REFUND_START: Bắt đầu xử lý hoàn tiền - InvoiceId: {InvoiceId}, RefundAmount: {RefundAmount:C}, Reason: {Reason}",
-                    invoiceId, refundAmount, refundReason);
+                _logger.LogInformation("PROCESS_REFUND_START: Bắt đầu hoàn tiền - InvoiceId: {InvoiceId}, RefundAmount: {RefundAmount:C}, Reason: {Reason}",
+					invoiceId, refundAmount, refundReason);
 
-                // ✅ STEP 1: Kiểm tra hóa đơn tồn tại
-                var invoice = await _invoiceRepository.GetById(invoiceId);
-                if (invoice == null || invoice.DeleteStatus)
-                {
-                    _logger.LogWarning("PROCESS_REFUND_INVOICE_NOT_FOUND: Hóa đơn không tồn tại - InvoiceId: {InvoiceId}", invoiceId);
-                    return new RefundResponseModel
-                    {
-                        Success = false,
-                        Message = "Hóa đơn không tồn tại",
-                        InvoiceId = invoiceId
-                    };
-                }
+				var response = new RefundResponseModel();
 
-                // ✅ STEP 2: Kiểm tra hóa đơn đã thanh toán
-                decimal paidAmount = invoice.PaidAmount ?? 0;
-                if (paidAmount <= 0)
-                {
-                    _logger.LogWarning(
-                        "PROCESS_REFUND_NOT_PAID: Hóa đơn chưa thanh toán - InvoiceId: {InvoiceId}, PaidAmount: {PaidAmount:C}",
-                        invoiceId, paidAmount);
-                    return new RefundResponseModel
-                    {
-                        Success = false,
-                        Message = "Hóa đơn chưa thanh toán, không thể hoàn tiền",
-                        InvoiceId = invoiceId,
-                        PaidAmount = paidAmount
-                    };
-                }
+				// BƯỚC 1: Lấy hóa đơn
+				var invoice = await _invoiceRepository.GetById(invoiceId);
+				if (invoice == null || invoice.DeleteStatus)
+				{
+					_logger.LogWarning("PROCESS_REFUND_INVOICE_NOT_FOUND: Hóa đơn không tồn tại - InvoiceId: {InvoiceId}", invoiceId);
+					response.Success = false;
+					response.Message = "Hóa đơn không tồn tại";
+					return response;
+				}
 
-                // ✅ STEP 3: Kiểm tra số tiền hoàn lệ hợp lệ
-                if (refundAmount <= 0 || refundAmount > paidAmount)
-                {
-                    _logger.LogWarning(
-                        "PROCESS_REFUND_INVALID_AMOUNT: Số tiền hoàn không hợp lệ - InvoiceId: {InvoiceId}, RefundAmount: {RefundAmount:C}, PaidAmount: {PaidAmount:C}",
-                        invoiceId, refundAmount, paidAmount);
-                    return new RefundResponseModel
-                    {
-                        Success = false,
-                        Message = $"Số tiền hoàn phải > 0 và ≤ {paidAmount:C}",
-                        InvoiceId = invoiceId,
-                        PaidAmount = paidAmount,
-                        RefundAmount = refundAmount
-                    };
-                }
+				// BƯỚC 2: Kiểm tra hóa đơn có sản phẩm
+				var invoiceDetails = await _invoiceDetailsRepository.FindByPredicate(x =>
+					x.InvoiceId == invoiceId && !x.DeleteStatus);
 
-                // ✅ STEP 4: Kiểm tra phương thức thanh toán
-                if (string.IsNullOrEmpty(invoice.PaymentMethod))
-                {
-                    _logger.LogWarning(
-                        "PROCESS_REFUND_NO_PAYMENT_METHOD: Hóa đơn không có phương thức thanh toán - InvoiceId: {InvoiceId}",
-                        invoiceId);
-                    return new RefundResponseModel
-                    {
-                        Success = false,
-                        Message = "Không thể xác định phương thức thanh toán để hoàn tiền",
-                        InvoiceId = invoiceId
-                    };
-                }
+				if (!invoiceDetails.Any())
+				{
+					_logger.LogWarning("PROCESS_REFUND_NO_PRODUCTS: Hóa đơn không có sản phẩm - InvoiceId: {InvoiceId}", invoiceId);
+					response.Success = false;
+					response.Message = "Hóa đơn không có sản phẩm nào để hoàn";
+					return response;
+				}
 
-                _logger.LogInformation(
-                    "PROCESS_REFUND_PAYMENT_METHOD: Phương thức thanh toán - InvoiceId: {InvoiceId}, Method: {Method}",
-                    invoiceId, invoice.PaymentMethod);
+				// BƯỚC 3: Kiểm tra trạng thái giao hàng (nếu có)
+				if (invoice.OrderStatus != "HoanThanh" && invoice.OrderStatus != "DaGiao")
+				{
+					_logger.LogWarning("PROCESS_REFUND_DELIVERY_NOT_COMPLETED: Trạng thái giao hàng không hoàn thành - InvoiceId: {InvoiceId}, Status: {Status}",
+						invoiceId, invoice.OrderStatus);
+					response.Success = false;
+					response.Message = "Trạng thái giao hàng chưa hoàn thành. Chỉ có thể hoàn hàng sau khi giao hàng hoàn tất";
+					return response;
+				}
 
-                // ✅ STEP 5: Gọi hàm hoàn tiền tương ứng với phương thức
-                bool refundSuccess = false;
-                string refundTransactionId = null;
+				// BƯỚC 4: Kiểm tra hóa đơn đã thanh toán
+				if (invoice.PaymentMethod != "VNPay" && invoice.PaymentMethod != "Momo")
+				{
+					_logger.LogWarning("PROCESS_REFUND_NOT_ONLINE_PAYMENT: Hóa đơn không phải thanh toán online - InvoiceId: {InvoiceId}, Method: {Method}",
+						invoiceId, invoice.PaymentMethod);
+					response.Success = false;
+					response.Message = "Chỉ có thể hoàn tiền cho các hóa đơn thanh toán online (VNPay, Momo)";
+					return response;
+				}
 
-                if (invoice.PaymentMethod.Equals("VNPay", StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogInformation(
-                        "PROCESS_REFUND_CALLING_VNPAY: Gọi VNPay hoàn tiền - InvoiceId: {InvoiceId}, Amount: {Amount:C}",
-                        invoiceId, refundAmount);
+				decimal paidAmount = invoice.PaidAmount ?? 0;
+				if (paidAmount <= 0)
+				{
+					_logger.LogWarning("PROCESS_REFUND_NOT_PAID: Hóa đơn chưa thanh toán - InvoiceId: {InvoiceId}, PaidAmount: {PaidAmount:C}",
+						invoiceId, paidAmount);
+					response.Success = false;
+					response.Message = "Hóa đơn chưa thanh toán, không thể hoàn tiền";
+					return response;
+				}
 
-                    var vnPayResult = await ProcessVnPayRefund(invoiceId, refundAmount);
-                    refundSuccess = vnPayResult.Item1;
-                    refundTransactionId = vnPayResult.Item2;
-                }
-                else if (invoice.PaymentMethod.Equals("Momo", StringComparison.OrdinalIgnoreCase))
-                {
-                    _logger.LogInformation(
-                        "PROCESS_REFUND_CALLING_MOMO: Gọi Momo hoàn tiền - InvoiceId: {InvoiceId}, Amount: {Amount:C}",
-                        invoiceId, refundAmount);
+				// BƯỚC 5: Kiểm tra số tiền hoàn không vượt quá số tiền đã thanh toán
+				if (refundAmount > paidAmount)
+				{
+					_logger.LogWarning("PROCESS_REFUND_AMOUNT_EXCEEDED: Số tiền hoàn vượt quá đã thanh toán - InvoiceId: {InvoiceId}, RefundAmount: {RefundAmount:C}, PaidAmount: {PaidAmount:C}",
+						invoiceId, refundAmount, paidAmount);
+					response.Success = false;
+					response.Message = $"Số tiền hoàn không được vượt quá số tiền đã thanh toán ({paidAmount:C})";
+					return response;
+				}
 
-                    var momoResult = await ProcessMomoRefund(invoiceId, refundAmount);
-                    refundSuccess = momoResult.Item1;
-                    refundTransactionId = momoResult.Item2;
-                }
-                else if (invoice.PaymentMethod.Equals("TienMat", StringComparison.OrdinalIgnoreCase) ||
-                         invoice.PaymentMethod.Equals("ChuyenKhoan", StringComparison.OrdinalIgnoreCase))
-                {
-                    // ✅ Thanh toán tiền mặt hoặc chuyển khoản - không cần gọi API bên ngoài
-                    _logger.LogInformation(
-                        "PROCESS_REFUND_MANUAL_METHOD: Phương thức thanh toán thủ công - InvoiceId: {InvoiceId}, Method: {Method}",
-                        invoiceId, invoice.PaymentMethod);
+				// BƯỚC 6: Tạo request hoàn tiền cho VNPay
+				var refundModel = new RefundInformationModel
+				{
+					OrderID = invoiceId.ToString(),
+					RefundAmount = refundAmount,
+					TransactionNo = invoice.TransactionId ?? "",
+					RefundReason = refundReason
+				};
 
-                    refundSuccess = true;
-                    refundTransactionId = $"MANUAL_{invoiceId}_{DateTime.UtcNow.Ticks}";
-                }
-                else
-                {
-                    _logger.LogWarning(
-                        "PROCESS_REFUND_UNSUPPORTED_METHOD: Phương thức thanh toán không hỗ trợ hoàn tiền - InvoiceId: {InvoiceId}, Method: {Method}",
-                        invoiceId, invoice.PaymentMethod);
-                    return new RefundResponseModel
-                    {
-                        Success = false,
-                        Message = $"Phương thức thanh toán '{invoice.PaymentMethod}' không hỗ trợ hoàn tiền",
-                        InvoiceId = invoiceId
-                    };
-                }
+				// Gọi VNPay API để xử lý hoàn tiền
+				bool refundSuccess = await ProcessVnPayRefund(refundModel);
 
-                // ✅ STEP 6: Kiểm tra kết quả hoàn tiền
-                if (!refundSuccess)
-                {
-                    _logger.LogError(
-                        "PROCESS_REFUND_GATEWAY_FAILED: Gateway hoàn tiền thất bại - InvoiceId: {InvoiceId}, Method: {Method}",
-                        invoiceId, invoice.PaymentMethod);
-                    return new RefundResponseModel
-                    {
-                        Success = false,
-                        Message = $"Hoàn tiền qua {invoice.PaymentMethod} thất bại. Vui lòng liên hệ hỗ trợ",
-                        InvoiceId = invoiceId
-                    };
-                }
+				if (!refundSuccess)
+				{
+					_logger.LogError("PROCESS_REFUND_VNPAY_FAILED: Hoàn tiền VNPay thất bại - InvoiceId: {InvoiceId}", invoiceId);
+					response.Success = false;
+					response.Message = "Hoàn tiền không thành công. Vui lòng thử lại";
+					return response;
+				}
 
-                // ✅ STEP 7: Cập nhật hóa đơn
-                decimal newPaidAmount = paidAmount - refundAmount;
-                decimal newOutstandingBalance = (invoice.OutstandingBalance ?? 0) + refundAmount;
+				// BƯỚC 7: Cập nhật thông tin hóa đơn
+				decimal newPaidAmount = paidAmount - refundAmount;
+				decimal finalPrice = invoice.FinalPrice ?? 0;
+				decimal newOutstandingBalance = finalPrice - newPaidAmount;
 
-                invoice.PaidAmount = newPaidAmount;
-                invoice.OutstandingBalance = newOutstandingBalance;
-                invoice.OrderStatus = "KhachHuy"; // Đánh dấu hóa đơn đã hoàn hàng
-                invoice.Status = newOutstandingBalance > 0 ? "ChuaThanhToan" : "DaThanhToan";
+				// Cập nhật PaidAmount
+				invoice.PaidAmount = newPaidAmount;
+				invoice.OutstandingBalance = newOutstandingBalance > 0 ? newOutstandingBalance : 0;
+				invoice.Status = newOutstandingBalance > 0 ? "ThanhToanMotPhan" : "DaThanhToan";
 
-                bool updateSuccess = await _invoiceRepository.UpdateEntity(invoice);
-                if (!updateSuccess)
-                {
-                    _logger.LogError(
-                        "PROCESS_REFUND_UPDATE_INVOICE_FAILED: Cập nhật hóa đơn thất bại - InvoiceId: {InvoiceId}",
-                        invoiceId);
-                    return new RefundResponseModel
-                    {
-                        Success = false,
-                        Message = "Hoàn tiền thành công nhưng không thể cập nhật hóa đơn. Vui lòng liên hệ hỗ trợ",
-                        InvoiceId = invoiceId
-                    };
-                }
+				var updated = await _invoiceRepository.UpdateEntity(invoice);
 
-                _logger.LogInformation(
-                    "PROCESS_REFUND_INVOICE_UPDATED: Hóa đơn được cập nhật - InvoiceId: {InvoiceId}, NewPaidAmount: {NewPaidAmount:C}, NewOutstanding: {NewOutstanding:C}",
-                    invoiceId, newPaidAmount, newOutstandingBalance);
+				if (!updated)
+				{
+					_logger.LogError("PROCESS_REFUND_UPDATE_FAILED: Cập nhật hóa đơn thất bại - InvoiceId: {InvoiceId}", invoiceId);
+					response.Success = false;
+					response.Message = "Hoàn tiền thành công nhưng cập nhật hóa đơn thất bại";
+					return response;
+				}
 
-                // ✅ STEP 8: Tạo refund log (tùy chọn - nếu có table RefundLog)
-                // await CreateRefundLog(invoiceId, refundAmount, refundReason, refundTransactionId);
+				_logger.LogInformation("PROCESS_REFUND_SUCCESS: Hoàn tiền thành công - InvoiceId: {InvoiceId}, RefundAmount: {RefundAmount:C}, NewPaidAmount: {NewPaidAmount:C}",
+					invoiceId, refundAmount, newPaidAmount);
 
-                // ✅ STEP 9: Gửi email thông báo hoàn tiền (tùy chọn)
-                // await SendRefundNotificationEmail(invoice, refundAmount, refundReason);
+				// BƯỚC 8: Trả về response
+				response.Success = true;
+				response.Message = "Hoàn tiền thành công";
+				response.InvoiceId = invoiceId;
+				response.RefundAmount = refundAmount;
+				response.RefundReason = refundReason;
+				response.PaymentMethod = invoice.PaymentMethod;
+				response.RefundDate = DateTime.UtcNow;
+				response.NewPaidAmount = newPaidAmount;
+				response.NewOutstandingBalance = newOutstandingBalance;
+				response.PaidAmount = paidAmount;
 
-                _logger.LogInformation(
-                    "PROCESS_REFUND_SUCCESS: Hoàn tiền thành công - InvoiceId: {InvoiceId}, RefundAmount: {RefundAmount:C}, TransactionId: {TransactionId}",
-                    invoiceId, refundAmount, refundTransactionId);
+				return response;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "PROCESS_REFUND_EXCEPTION: Lỗi khi xử lý hoàn tiền - InvoiceId: {InvoiceId}", invoiceId);
+				return new RefundResponseModel
+				{
+					Success = false,
+					Message = $"Lỗi khi xử lý hoàn tiền: {ex.Message}"
+				};
+			}
+		}
 
-                return new RefundResponseModel
-                {
-                    Success = true,
-                    Message = $"Hoàn tiền {refundAmount:C} thành công",
-                    InvoiceId = invoiceId,
-                    RefundAmount = refundAmount,
-                    RefundReason = refundReason,
-                    RefundTransactionId = refundTransactionId,
-                    PaymentMethod = invoice.PaymentMethod,
-                    RefundDate = DateTime.UtcNow,
-                    NewPaidAmount = newPaidAmount,
-                    NewOutstandingBalance = newOutstandingBalance
-                };
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "PROCESS_REFUND_EXCEPTION: Lỗi khi xử lý hoàn tiền - InvoiceId: {InvoiceId}", invoiceId);
-                return new RefundResponseModel
-                {
-                    Success = false,
-                    Message = $"Lỗi: {ex.Message}",
-                    InvoiceId = invoiceId
-                };
-            }
-        }
+		/// <summary>
+		/// ✅ Gọi VNPay API để xử lý hoàn tiền
+		/// Cần setup HttpClient trong Program.cs để gọi VNPay API
+		/// </summary>
+		private async Task<bool> ProcessVnPayRefund(RefundInformationModel refundModel)
+		{
+			try
+			{
+				_logger.LogInformation("VNPAY_REFUND_API_START: Gọi VNPay Refund API - OrderId: {OrderId}, Amount: {Amount:C}",
+					refundModel.OrderID, refundModel.RefundAmount);
 
-        /// <summary>
-        /// 🆕 Hoàn tiền qua VNPay (gọi API VNPay refund)
-        /// Return: (Success, TransactionId)
-        /// </summary>
-        private async Task<(bool, string)> ProcessVnPayRefund(int invoiceId, decimal refundAmount)
-        {
-            try
-            {
-                _logger.LogInformation(
-                    "PROCESS_VNPAY_REFUND_START: Hoàn tiền VNPay - InvoiceId: {InvoiceId}, Amount: {Amount:C}",
-                    invoiceId, refundAmount);
+				// ✅ HƯỚNG DẪN: Bạn cần thực hiện các bước sau:
+				// 1. Tạo request payload với thông tin hoàn tiền
+				// 2. Ký số (sign) request bằng HashSecret
+				// 3. Gửi request tới VNPay Refund API endpoint
+				// 4. Xử lý response từ VNPay
 
-                // TODO: Gọi VNPay API refund
-                // Cần có VNPayService hoặc gọi API trực tiếp
-                // Ref: https://sandbox.vnpayment.vn/apis/docs/refund-api/
+				// Giả sử có HttpClient injected
+				// Ví dụ:
+				// var response = await _httpClient.PostAsJsonAsync(
+				//     "https://sandbox.vnpayment.vn/merchant_refund",
+				//     refundModel);
+				// return response.IsSuccessStatusCode;
 
-                // Ví dụ placeholder:
-                // var result = await _vnPayService.RefundTransaction(transactionRef, refundAmount);
+				// Để demo, trả về true - nhưng trong production, gọi thực VNPay API
+				return true;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "VNPAY_REFUND_API_EXCEPTION: Lỗi khi gọi VNPay Refund API - OrderId: {OrderId}",
+					refundModel.OrderID);
+				return false;
+			}
+		}
 
-                // ⚠️ Giả sử VNPay refund thành công
-                string transactionId = $"VNPAY_{invoiceId}_{DateTime.UtcNow.Ticks}";
-                _logger.LogInformation(
-                    "PROCESS_VNPAY_REFUND_SUCCESS: Hoàn tiền VNPay thành công - TransactionId: {TransactionId}",
-                    transactionId);
+		/// <summary>
+		/// ✅ HÀM MỚI: Update tiền + TransactionId từ callback payment
+		/// ⭐ Gọi UpdateInvoicePayment để xử lý logic tiền tệ, rồi update TransactionId
+		/// </summary>
+		private async Task<bool> UpdateInvoicePaymentWithTransaction(int invoiceId, decimal paidAmount, string paymentMethod, string transactionId)
+		{
+			try
+			{
+				_logger.LogInformation("UPDATE_INVOICE_WITH_TRANSACTION_START: Cập nhật hóa đơn với TransactionId - InvoiceId: {InvoiceId}, TransactionId: {TransactionId}, PaymentMethod: {PaymentMethod}",
+					invoiceId, transactionId, paymentMethod);
 
-                return (true, transactionId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "PROCESS_VNPAY_REFUND_EXCEPTION: Lỗi hoàn tiền VNPay - InvoiceId: {InvoiceId}", invoiceId);
-                return (false, null);
-            }
-        }
+				// ✅ BƯỚC 1: Lấy hóa đơn gốc để backup TransactionId hiện tại
+				var invoice = await _invoiceRepository.GetById(invoiceId);
+				if (invoice == null || invoice.DeleteStatus)
+				{
+					_logger.LogError("UPDATE_INVOICE_WITH_TRANSACTION_NOT_FOUND: Hóa đơn không tồn tại - InvoiceId: {InvoiceId}", invoiceId);
+					return false;
+				}
 
-        /// <summary>
-        /// 🆕 Hoàn tiền qua Momo (gọi API Momo refund)
-        /// Return: (Success, TransactionId)
-        /// </summary>
-        private async Task<(bool, string)> ProcessMomoRefund(int invoiceId, decimal refundAmount)
-        {
-            try
-            {
-                _logger.LogInformation(
-                    "PROCESS_MOMO_REFUND_START: Hoàn tiền Momo - InvoiceId: {InvoiceId}, Amount: {Amount:C}",
-                    invoiceId, refundAmount);
+				var oldTransactionId = invoice.TransactionId; // Backup TransactionId cũ
 
-                // TODO: Gọi Momo API refund
-                // Cần có MomoService hoặc gọi API trực tiếp
-                // Ref: https://developers.momo.vn/v3/docs/
+				// ✅ BƯỚC 2: Gọi UpdateInvoicePayment để xử lý logic tiền tệ
+				// (Hàm này sẽ cập nhật: PaidAmount, OutstandingBalance, Status, OrderStatus, InvoiceDetails)
+				var isUpdated = await UpdateInvoicePayment(invoiceId, paidAmount, paymentMethod);
+				if (!isUpdated)
+				{
+					_logger.LogError("UPDATE_INVOICE_WITH_TRANSACTION_UPDATE_FAILED: UpdateInvoicePayment thất bại - InvoiceId: {InvoiceId}", invoiceId);
+					return false;
+				}
 
-                // Ví dụ placeholder:
-                // var result = await _momoService.RefundTransaction(transactionId, refundAmount);
+				// ✅ BƯỚC 3: Lấy hóa đơn lại sau khi UpdateInvoicePayment
+				invoice = await _invoiceRepository.GetById(invoiceId);
+				if (invoice == null)
+				{
+					_logger.LogError("UPDATE_INVOICE_WITH_TRANSACTION_FETCH_FAILED: Không thể lấy hóa đơn sau update - InvoiceId: {InvoiceId}", invoiceId);
+					return false;
+				}
 
-                // ⚠️ Giả sử Momo refund thành công
-                string transactionId = $"MOMO_{invoiceId}_{DateTime.UtcNow.Ticks}";
-                _logger.LogInformation(
-                    "PROCESS_MOMO_REFUND_SUCCESS: Hoàn tiền Momo thành công - TransactionId: {TransactionId}",
-                    transactionId);
+				// ✅ BƯỚC 4: Chỉ cập nhật TransactionId nếu chưa có hoặc trống
+				// (Giữ lại TransactionId đầu tiên khi lần thanh toán đầu tiên)
+				if (string.IsNullOrEmpty(invoice.TransactionId) && !string.IsNullOrEmpty(transactionId))
+				{
+					invoice.TransactionId = transactionId;
 
-                return (true, transactionId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "PROCESS_MOMO_REFUND_EXCEPTION: Lỗi hoàn tiền Momo - InvoiceId: {InvoiceId}", invoiceId);
-                return (false, null);
-            }
-        }
-    }
+					var transactionUpdated = await _invoiceRepository.UpdateEntity(invoice);
+					if (!transactionUpdated)
+					{
+						_logger.LogWarning("UPDATE_INVOICE_WITH_TRANSACTION_SAVE_FAILED: Không thể lưu TransactionId - InvoiceId: {InvoiceId}", invoiceId);
+						return false;
+					}
+
+					_logger.LogInformation("UPDATE_INVOICE_WITH_TRANSACTION_SUCCESS: TransactionId lưu thành công - InvoiceId: {InvoiceId}, OldTransactionId: {OldTransactionId}, NewTransactionId: {NewTransactionId}",
+						invoiceId, oldTransactionId ?? "null", transactionId);
+				}
+				else if (!string.IsNullOrEmpty(invoice.TransactionId))
+				{
+					_logger.LogInformation("UPDATE_INVOICE_WITH_TRANSACTION_ALREADY_SET: TransactionId đã có sẵn - InvoiceId: {InvoiceId}, TransactionId: {TransactionId}",
+						invoiceId, invoice.TransactionId);
+				}
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "UPDATE_INVOICE_WITH_TRANSACTION_EXCEPTION: Lỗi khi cập nhật TransactionId - InvoiceId: {InvoiceId}", invoiceId);
+				return false;
+			}
+		}
+	}
 }

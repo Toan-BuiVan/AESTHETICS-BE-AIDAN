@@ -77,5 +77,70 @@ namespace ASP_NetCore_Aesthetics.Services.VnPaySevices
 				throw;
 			}
 		}
+
+		/// <summary>
+		/// ✅ Tạo request hoàn tiền cho VNPay
+		/// </summary>
+		public string CreateRefundUrl(RefundInformationModel model)
+		{
+			try
+			{
+				_logger.LogInformation("VNPAY_CREATE_REFUND_URL_START: Tạo request hoàn tiền VNPay - OrderId: {OrderId}, Amount: {Amount:C}, TransactionNo: {TransactionNo}",
+					model.OrderID, model.RefundAmount, model.TransactionNo);
+
+				var timeZoneById = TimeZoneInfo.FindSystemTimeZoneById(_configuration["TimeZoneId"]);
+				var timeNow = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, timeZoneById);
+				var tick = DateTime.Now.Ticks.ToString();
+				var pay = new VnPayLibrary();
+
+				pay.AddRequestData("vnp_Version", _configuration["Vnpay:Version"]);
+				pay.AddRequestData("vnp_Command", "refund"); // ✅ Command là "refund"
+				pay.AddRequestData("vnp_TmnCode", _configuration["Vnpay:TmnCode"]);
+				pay.AddRequestData("vnp_Amount", ((decimal)model.RefundAmount * 100).ToString());
+				pay.AddRequestData("vnp_CreateDate", timeNow.ToString("yyyyMMddHHmmss"));
+				pay.AddRequestData("vnp_CurrCode", _configuration["Vnpay:CurrCode"]);
+				pay.AddRequestData("vnp_OrderInfo", $"Refund OrderID:{model.OrderID}|{model.RefundReason}");
+				pay.AddRequestData("vnp_OrderType", model.OrderID);
+				pay.AddRequestData("vnp_TransactionNo", model.TransactionNo); // ✅ Transaction ID gốc
+				pay.AddRequestData("vnp_TxnRef", tick);
+
+				var refundUrl = pay.CreateRequestUrl(_configuration["Vnpay:BaseUrl"], _configuration["Vnpay:HashSecret"]);
+
+				_logger.LogInformation("VNPAY_CREATE_REFUND_URL_SUCCESS: Request hoàn tiền VNPay được tạo thành công - OrderId: {OrderId}, Amount: {Amount:C}",
+					model.OrderID, model.RefundAmount);
+
+				return refundUrl;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "VNPAY_CREATE_REFUND_URL_EXCEPTION: Lỗi khi tạo request hoàn tiền VNPay - OrderId: {OrderId}",
+					model.OrderID);
+				throw;
+			}
+		}
+
+		/// <summary>
+		/// ✅ Xử lý kết quả hoàn tiền từ VNPay
+		/// </summary>
+		public PaymentResponseModel RefundExecute(IQueryCollection collections)
+		{
+			try
+			{
+				_logger.LogInformation("VNPAY_REFUND_EXECUTE_START: Xử lý kết quả hoàn tiền VNPay");
+
+				var pay = new VnPayLibrary();
+				var response = pay.GetFullResponseData(collections, _configuration["Vnpay:HashSecret"]);
+
+				_logger.LogInformation("VNPAY_REFUND_EXECUTE_SUCCESS: Xử lý kết quả hoàn tiền thành công - ResponseCode: {ResponseCode}, TransactionStatus: {TransactionStatus}",
+					response?.VnPayResponseCode, response?.TransactionStatus);
+
+				return response;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "VNPAY_REFUND_EXECUTE_EXCEPTION: Lỗi khi xử lý kết quả hoàn tiền VNPay");
+				throw;
+			}
+		}
 	}
 }

@@ -1,5 +1,6 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Models.RequestModel;
+using Aesthetics.Entities.Models.ResponseModel;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System.Threading.Tasks;
@@ -10,45 +11,44 @@ namespace Aesthetics.Controllers
     [Route("api/[controller]")]
     public class InvoiceRefundController : ControllerBase
     {
-        private readonly IInvoicePaymentService _invoicePaymentService;
         private readonly ILogger<InvoiceRefundController> _logger;
+        private readonly IInvoicePaymentService _invoicePaymentService;
 
         public InvoiceRefundController(
-            IInvoicePaymentService invoicePaymentService,
-            ILogger<InvoiceRefundController> logger)
+            ILogger<InvoiceRefundController> logger,
+            IInvoicePaymentService invoicePaymentService)
         {
-            _invoicePaymentService = invoicePaymentService;
             _logger = logger;
+            _invoicePaymentService = invoicePaymentService;
         }
 
         /// <summary>
-        /// 🆕 Hoàn tiền cho hóa đơn
-        /// POST: /api/invoicerefund/process-refund
+        /// ✅ Hoàn hàng và hoàn tiền cho khách hàng
+        /// POST: api/invoicerefund/process-refund
         /// </summary>
         [HttpPost("process-refund")]
         public async Task<IActionResult> ProcessRefund([FromBody] RefundRequestModel request)
         {
-            _logger.LogInformation(
-                "ProcessRefund: InvoiceId: {InvoiceId}, RefundAmount: {Amount}, Reason: {Reason}",
-                request.InvoiceId, request.RefundAmount, request.RefundReason);
-
-            if (request == null || request.InvoiceId <= 0 || request.RefundAmount <= 0)
+            try
             {
-                return BadRequest(new { message = "InvoiceId và RefundAmount phải > 0" });
+                _logger.LogInformation("REFUND_API_START: Nhận request hoàn hàng - InvoiceId: {InvoiceId}, Amount: {Amount:C}",
+                    request.InvoiceId, request.RefundAmount);
+
+                var result = await _invoicePaymentService.ProcessRefund(
+                    request.InvoiceId,
+                    request.RefundAmount,
+                    request.RefundReason);
+
+                _logger.LogInformation("REFUND_API_RESPONSE: {Success} - {Message}",
+                    result.Success, result.Message);
+
+                return Ok(result);
             }
-
-            var result = await _invoicePaymentService.ProcessRefund(
-                request.InvoiceId,
-                request.RefundAmount,
-                request.RefundReason ?? "Hoàn hàng"
-            );
-
-            if (!result.Success)
+            catch (System.Exception ex)
             {
-                return BadRequest(result);
+                _logger.LogError(ex, "REFUND_API_EXCEPTION: Lỗi khi xử lý hoàn hàng");
+                return StatusCode(500, new { success = false, message = "Lỗi server khi xử lý hoàn hàng" });
             }
-
-            return Ok(result);
         }
     }
 }
