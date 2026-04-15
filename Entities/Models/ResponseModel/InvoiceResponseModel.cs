@@ -7,13 +7,17 @@ namespace Aesthetics.Entities.Models.ResponseModel
 		public int Id { get; set; }
 
 		public int? CustomerId { get; set; }
+
 		public string? CustomerName { get; set; }
+
 		public string? CustomerPhone { get; set; }
 
 		public int? StaffId { get; set; }
+
 		public string? StaffName { get; set; }
 
 		public int? VoucherId { get; set; }
+
 		public string? VoucherCode { get; set; }
 
 		public decimal TotalMoney { get; set; }
@@ -35,6 +39,8 @@ namespace Aesthetics.Entities.Models.ResponseModel
 		public DateTime? DateCreated { get; set; }
 
 		public string? Type { get; set; }
+
+		public bool? IsRefund { get; set; }
 	}
 
 	public class InvoiceDetailResponseModel

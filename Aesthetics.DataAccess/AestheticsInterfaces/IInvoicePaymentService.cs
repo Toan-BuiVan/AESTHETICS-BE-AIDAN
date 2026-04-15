@@ -37,11 +37,5 @@ namespace Aesthetics.Data.AestheticsInterfaces
         /// Lấy thông tin thanh toán hóa đơn
         /// </summary>
         Task<InvoicePaymentInfoModel> GetInvoicePaymentInfo(int invoiceId);
-
-		/// <summary>
-		/// hoàn tiền
-		/// </summary>
-		Task<RefundResponseModel> ProcessRefund(int invoiceId, decimal refundAmount, string refundReason);
-
 	}
 }

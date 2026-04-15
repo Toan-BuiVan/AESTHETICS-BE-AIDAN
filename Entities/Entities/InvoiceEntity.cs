@@ -49,20 +49,26 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>Trạng thái thanh toán: ChuaThanhToan, ThanhToanMotPhan, DaThanhToan</summary>
 		public string? Status { get; set; }
 
-		/// <summary>Trạng thái giao hàng: DangXuLy, DaGiao, KhachHuy</summary>
-		public string? OrderStatus { get; set; }
+		/// <summary>✅ Thời gian ghi nhận giao dịch thanh toán (GMT+7) - dùng cho VNPAY refund</summary>
+		public DateTime? PaymentDate { get; set; }
 
-		/// <summary>Phương thức thanh toán: TienMat, ChuyenKhoan, TheNganHang, MoMo, VNPay</summary>
+		/// <summary>Mã giao dịch từ VNPAY</summary>
+		public string? TransactionId { get; set; }
+
+		/// <summary>Phương thức thanh toán: VNPAY, MOMO, etc</summary>
 		public string? PaymentMethod { get; set; }
+
+		/// <summary>Loại hóa đơn</summary>
+		public string? Type { get; set; }
+
+		/// <summary>Trạng thái đơn hàng</summary>
+		public string? OrderStatus { get; set; }
 
 		/// <summary>Ngày tạo hóa đơn</summary>
 		public DateTime? DateCreated { get; set; }
 
-		/// <summary>Loại hóa đơn: BanHang, etc</summary>
-		public string? Type { get; set; }
-
-		/// <summary>✅ Mã giao dịch từ VNPay/Momo</summary>
-		public string? TransactionId { get; set; }
+		/// <summary>Cờ kiểm tra hoàn tiền</summary>
+		public bool? IsRefund { get; set; }
 
 		// ✅ Navigation properties
 		public virtual CustomerEntity? Customer { get; set; }

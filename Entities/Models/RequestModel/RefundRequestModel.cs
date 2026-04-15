@@ -1,17 +1,42 @@
-﻿namespace Aesthetics.Entities.Models.RequestModel
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
+
+namespace Aesthetics.Entities.Models.RequestModel
 {
     /// <summary>
     /// Request model cho hoàn tiền hóa đơn
     /// </summary>
-    public class RefundRequestModel
+    public class CreateRefundModel
     {
-        /// <summary>ID hóa đơn cần hoàn tiền</summary>
-        public int InvoiceId { get; set; }
+		public int? InvoiceId { get; set; }
+		public int? CustomerId { get; set; }
+		/// <summary>Lý do hoàn tiền</summary>
+		[StringLength(1000)]
+		public string? RefundReason { get; set; }
 
-        /// <summary>Số tiền hoàn</summary>
-        public decimal RefundAmount { get; set; }
+		/// <summary>Hình ảnh chứng minh hoàn tiền (lưu đường dẫn hoặc JSON array)</summary>
+		public string? RefundImages { get; set; }
 
-        /// <summary>Lý do hoàn hàng</summary>
-        public string RefundReason { get; set; }
-    }
+		/// <summary>Phương thức hoàn tiền: BankTransfer, Wallet, Cash</summary>
+		[StringLength(50)]
+		public string? RefundMethod { get; set; }
+
+		/// <summary>Trạng thái hoàn tiền: PendingApproval, Approved, Rejected, Completed, Failed</summary>
+	}
+
+	public class UpdtaeRefundModel
+	{
+		public int? Id { get; set; }
+		public int? StaffId { get; set; }
+		public string? Status { get; set; }
+	}
+
+	public class getlist : BaseSearchModel
+	{
+		public int? InvoiceId { get; set; }
+		public int? CustomerId { get; set; }
+		public int? StaffId { get; set; }
+		public int? startdate { get; set; }
+		public int? enddate { get; set; }
+	}
 }

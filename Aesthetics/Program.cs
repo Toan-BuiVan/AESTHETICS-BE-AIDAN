@@ -25,7 +25,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowAll", policy =>
     {
-        policy.WithOrigins("http://localhost:4200", "http://localhost:3000", "https://yourdomain.com", "https://buitoan.somee.com")
+        policy.WithOrigins("http://localhost:3001", "http://localhost:3000", "https://yourdomain.com", "https://buitoan.somee.com")
               .AllowAnyMethod()
               .AllowAnyHeader()
               .AllowCredentials();
@@ -74,6 +74,9 @@ builder.Services.AddScoped<ITreatmentSessionRepository, TreatmentSessionReposito
 builder.Services.AddScoped<IVoucherRepository, VoucherRepository>();
 builder.Services.AddScoped<IWalletRepository, WalletRepository>();
 builder.Services.AddScoped<IAccountSessionsRepository, AccountSessionsRepository>();
+builder.Services.AddScoped<ICustomerPaymentInfoRepository, CustomerPaymentInfoRepository>();
+builder.Services.AddScoped<IRefundRepository, RefundRepository>();
+
 
 // ===== Service Registrations =====
 builder.Services.AddScoped<ICommonService, CommonService>();
@@ -110,6 +113,8 @@ builder.Services.AddScoped<IStaffService, StaffService>();
 builder.Services.AddScoped<ICustomerService, CustomerService>();
 builder.Services.AddScoped<IAccountSessionsService, AccountSessionsService>();
 builder.Services.AddScoped<IInvoicePaymentService, InvoicePaymentService>();
+builder.Services.AddScoped<ICustomerPaymentInfoService, CustomerPaymentInfoService>();
+builder.Services.AddScoped<IRefundServcie, RefundService>();
 
 // ===== Payment Services =====
 builder.Services.AddScoped<IVnPayService, VnPayService>();

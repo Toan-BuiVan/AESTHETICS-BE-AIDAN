@@ -39,6 +39,8 @@ namespace Aesthetics.Data.AestheticsDbContext
 			ConfigureCustomerTreatmentPlanRelationships(builder);
 			ConfigureCustomerTreatmentSessionRelationships(builder);
 			ConfigureAppointmentTimeLockRelationships(builder);
+			ConfigureRefundRelationships(builder);
+			ConfigureCustomerPaymentInfoRelationships(builder);
 		}
 
 		private static void ConfigureUniqueIndexes(ModelBuilder builder)
@@ -462,6 +464,36 @@ namespace Aesthetics.Data.AestheticsDbContext
 				.OnDelete(DeleteBehavior.Cascade);
 		}
 
+		private static void ConfigureRefundRelationships(ModelBuilder builder)
+		{
+			builder.Entity<RefundEntity>()
+				.HasOne(r => r.Invoice)
+				.WithMany()
+				.HasForeignKey(r => r.InvoiceId)
+				.OnDelete(DeleteBehavior.Restrict);
+
+			builder.Entity<RefundEntity>()
+				.HasOne(r => r.Customer)
+				.WithMany()
+				.HasForeignKey(r => r.CustomerId)
+				.OnDelete(DeleteBehavior.Restrict);
+
+			builder.Entity<RefundEntity>()
+				.HasOne(r => r.Staffs)
+				.WithMany()
+				.HasForeignKey(r => r.StaffId)
+				.OnDelete(DeleteBehavior.Restrict);
+		}
+
+		private static void ConfigureCustomerPaymentInfoRelationships(ModelBuilder builder)
+		{
+			builder.Entity<CustomerPaymentInfoEntity>()
+				.HasOne(cpi => cpi.Customer)
+				.WithMany(c => c.PaymentInfos)
+				.HasForeignKey(cpi => cpi.CustomerId)
+				.OnDelete(DeleteBehavior.Cascade);
+		}
+
 		// ==================== DbSets ====================
 		public DbSet<AccountEntity> Accounts { get; set; }
 		public DbSet<CustomerEntity> Customers { get; set; }
@@ -494,5 +526,7 @@ namespace Aesthetics.Data.AestheticsDbContext
 		public DbSet<CustomerTreatmentPlanEntity> CustomerTreatmentPlans { get; set; }
 		public DbSet<CustomerTreatmentSessionEntity> CustomerTreatmentSessions { get; set; }
 		public DbSet<InventoryAlertEntity> InventoryAlerts { get; set; }
+		public DbSet<RefundEntity> Refunds { get; set; }
+		public DbSet<CustomerPaymentInfoEntity> CustomerPaymentInfos { get; set; }
 	}
 }

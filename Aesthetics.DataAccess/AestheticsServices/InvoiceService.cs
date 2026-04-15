@@ -30,9 +30,9 @@ namespace Aesthetics.Data.AestheticsServices
 		private readonly IStaffRepository _staffRepository;
 		private readonly ICartProductRepository _cartProductRepository;
 		private readonly IWalletRepository _walletRepository;
-		private readonly IAppointmentRepositoty _appointmentRepository;  // 🆕
-		private readonly ICustomerTreatmentPlansRepository _customerTreatmentPlansRepository;  // 🆕
-		private readonly ICustomerTreatmentSessionsRepository _customerTreatmentSessionsRepository;  // 🆕
+		private readonly IAppointmentRepositoty _appointmentRepository; 
+		private readonly ICustomerTreatmentPlansRepository _customerTreatmentPlansRepository;  
+		private readonly ICustomerTreatmentSessionsRepository _customerTreatmentSessionsRepository;  
 
 		#endregion
 
@@ -206,7 +206,7 @@ namespace Aesthetics.Data.AestheticsServices
 					DateCreated = DateTime.UtcNow,
 					Status = status,
 					Type = invoice.Type,
-					OrderStatus = "DangChoXuLy",
+					OrderStatus = "DangXuLy",
 					PaymentMethod = invoice.PaymentMethod ?? "ThanhToanOnline",
 					DeleteStatus = false
 				};
@@ -376,11 +376,11 @@ namespace Aesthetics.Data.AestheticsServices
 					};
 				}
 
-				// ✅ BƯỚC 2: Xây dựng điều kiện lọc cơ bản
+				// ✅ BƯỚC 2: Xây dựng điều kiện lọc cơ bản (KHÔNG có OrderStatuses)
 				Expression<Func<InvoiceEntity, bool>> predicate = x => !x.DeleteStatus;
 
 				// Lọc theo CustomerId
-				if (filter.CustomerId.HasValue)
+				if (filter.CustomerId.HasValue && filter.CustomerId.Value > 0)
 				{
 					var customerId = filter.CustomerId.Value;
 					predicate = predicate.And(x => x.CustomerId == customerId);
@@ -388,7 +388,7 @@ namespace Aesthetics.Data.AestheticsServices
 				}
 
 				// Lọc theo StaffId
-				if (filter.StaffId.HasValue)
+				if (filter.StaffId.HasValue && filter.StaffId.Value > 0)
 				{
 					var staffId = filter.StaffId.Value;
 					predicate = predicate.And(x => x.StaffId == staffId);
@@ -411,21 +411,6 @@ namespace Aesthetics.Data.AestheticsServices
 					_logger.LogInformation("GET_INVOICE_DETAILS_FILTER_STATUS: Lọc theo Status {Status}", status);
 				}
 
-				// 🆕 Lọc theo danh sách OrderStatuses (DangChoXuLy, DangGiao, DaGiao, KhachHuy)
-				if (filter.OrderStatuses != null && filter.OrderStatuses.Count > 0)
-				{
-					var validOrderStatuses = filter.OrderStatuses
-						.Where(os => !string.IsNullOrEmpty(os) && os != "null")
-						.ToList();
-
-					if (validOrderStatuses.Count > 0)
-					{
-						predicate = predicate.And(x => validOrderStatuses.Contains(x.OrderStatus));
-						_logger.LogInformation("GET_INVOICE_DETAILS_FILTER_ORDER_STATUSES: Lọc theo OrderStatuses {OrderStatuses}",
-							string.Join(", ", validOrderStatuses));
-					}
-				}
-
 				// Lọc theo StartDate
 				if (filter.StartDate.HasValue)
 				{
@@ -442,8 +427,43 @@ namespace Aesthetics.Data.AestheticsServices
 					_logger.LogInformation("GET_INVOICE_DETAILS_FILTER_END_DATE: Lọc đến ngày {EndDate:yyyy-MM-dd}", endDate);
 				}
 
-				// ✅ BƯỚC 3: Lấy danh sách hóa đơn thỏa mãn điều kiện (với Include related data)
+				_logger.LogInformation("GET_INVOICE_DETAILS_PREDICATE_BUILT: Đã xây dựng predicate (chưa có OrderStatuses)");
+
+				// ✅ BƯỚC 3: Lấy danh sách hóa đơn từ database (sử dụng predicate cơ bản)
+				_logger.LogInformation("GET_INVOICE_DETAILS_FETCHING: Bắt đầu fetch dữ liệu từ database");
 				var allInvoices = await _invoiceRepository.FindByPredicate(predicate);
+
+				_logger.LogInformation("GET_INVOICE_DETAILS_FETCHED: Fetch hoàn tất - Số bản ghi: {Count}", allInvoices.Count());
+
+				// ✅ BƯỚC 4: LỌC IN-MEMORY theo OrderStatuses (sau khi fetch từ DB)
+				if (filter.OrderStatuses != null && filter.OrderStatuses.Count > 0)
+				{
+					var validOrderStatuses = filter.OrderStatuses
+						.Where(os => !string.IsNullOrEmpty(os) && os != "null")
+						.ToList();
+
+					if (validOrderStatuses.Count > 0)
+					{
+						_logger.LogInformation("GET_INVOICE_DETAILS_FILTER_ORDER_STATUSES_DEBUG: Danh sách OrderStatuses cần lọc: {OrderStatuses}, Count: {Count}",
+							string.Join(", ", validOrderStatuses), validOrderStatuses.Count);
+
+						allInvoices = allInvoices
+							.AsEnumerable()
+							.Where(x => x.OrderStatus != null && validOrderStatuses.Contains(x.OrderStatus))
+							.ToList();
+
+						_logger.LogInformation("GET_INVOICE_DETAILS_FILTER_ORDER_STATUSES_APPLIED: Sau khi lọc OrderStatuses - Số bản ghi: {Count}",
+							allInvoices.Count());
+					}
+					else
+					{
+						_logger.LogWarning("GET_INVOICE_DETAILS_FILTER_ORDER_STATUSES_EMPTY: Danh sách OrderStatuses trống sau khi filter");
+					}
+				}
+				else
+				{
+					_logger.LogInformation("GET_INVOICE_DETAILS_FILTER_ORDER_STATUSES_NULL: OrderStatuses không được truyền vào hoặc rỗng");
+				}
 
 				// ✅ Eager load related entities
 				var invoicesWithDetails = allInvoices
@@ -451,7 +471,6 @@ namespace Aesthetics.Data.AestheticsServices
 					.Select(x => new
 					{
 						Invoice = x,
-						// Force load related entities
 						Customer = x.Customer,
 						Staff = x.Staff,
 						Service = x.Service,
@@ -475,12 +494,12 @@ namespace Aesthetics.Data.AestheticsServices
 					};
 				}
 
-				// ✅ BƯỚC 4: Sắp xếp theo ngày tạo (mới nhất trước)
+				// ✅ BƯỚC 5: Sắp xếp theo ngày tạo (mới nhất trước)
 				var sortedInvoices = invoicesWithDetails
 					.OrderByDescending(x => x.Invoice.DateCreated ?? DateTime.MinValue)
 					.ToList();
 
-				// ✅ BƯỚC 5: Phân trang
+				// ✅ BƯỚC 6: Phân trang
 				int pageNo = filter.PageNo > 0 ? filter.PageNo : 1;
 				int pageSize = filter.PageSize > 0 ? filter.PageSize : 10;
 				int pageCount = (int)Math.Ceiling((double)totalCount / pageSize);
@@ -494,39 +513,44 @@ namespace Aesthetics.Data.AestheticsServices
 					"TotalCount: {TotalCount}, PageCount: {PageCount}, CurrentPageRecords: {CurrentPageRecords}",
 					pageNo, pageSize, totalCount, pageCount, pagedInvoices.Count);
 
-				// ✅ BƯỚC 6: Lấy chi tiết hóa đơn cho mỗi hóa đơn trong trang
+				// ✅ BƯỚC 7: Lấy chi tiết hóa đơn cho mỗi hóa đơn trong trang
 				var result = new List<InvoiceDetailFullResponseModel>();
 
 				foreach (var invoiceData in pagedInvoices)
 				{
 					var invoice = invoiceData.Invoice;
-					_logger.LogInformation("GET_INVOICE_DETAILS_PROCESSING: Xử lý hóa đơn - InvoiceId: {InvoiceId}", invoice.Id);
+					_logger.LogInformation("GET_INVOICE_DETAILS_PROCESSING: Xử lý hóa đơn - InvoiceId: {InvoiceId}, OrderStatus: {OrderStatus}",
+						invoice.Id, invoice.OrderStatus ?? "NULL");
 
-					// Lấy chi tiết hóa đơn
+					// ✅ Lấy chi tiết hóa đơn
 					var details = await _invoiceDetailsRepository.FindByPredicate(x =>
 						x.InvoiceId == invoice.Id && !x.DeleteStatus);
 
 					_logger.LogInformation("GET_INVOICE_DETAILS_DETAIL_COUNT: Tìm thấy {Count} chi tiết cho InvoiceId {InvoiceId}",
 						details.Count(), invoice.Id);
 
-					// Map sang Response Models
+					// ✅ FIX: Map từng detail lần lượt (SEQUENTIAL) thay vì song song (PARALLEL)
+					var detailResponses = new List<InvoiceDetailResponseModel>();
+					foreach (var detail in details.OrderBy(x => x.Id))
+					{
+						// ✅ Gọi async method từng cái một, không gọi Task.WhenAll()
+						var detailResponse = await MapToInvoiceDetailResponseAsync(detail);
+						detailResponses.Add(detailResponse);
+					}
+
+					// Map Invoice
 					var invoiceResponse = await MapToInvoiceResponseAsync(invoice);
-					var detailResponseTasks = details
-						.OrderBy(x => x.Id)
-						.Select(x => MapToInvoiceDetailResponseAsync(x))
-						.ToList();
-					var detailResponses = await Task.WhenAll(detailResponseTasks);
 
 					var invoiceDetailFull = new InvoiceDetailFullResponseModel
 					{
 						Invoice = invoiceResponse,
-						InvoiceDetails = detailResponses.ToList()
+						InvoiceDetails = detailResponses
 					};
 
 					result.Add(invoiceDetailFull);
 				}
 
-				// ✅ BƯỚC 7: Trả về kết quả
+				// ✅ BƯỚC 8: Trả về kết quả
 				var response = new BaseDataCollection<InvoiceDetailFullResponseModel>
 				{
 					BaseDatas = result,
@@ -880,7 +904,8 @@ namespace Aesthetics.Data.AestheticsServices
 				OrderStatus = entity.OrderStatus,
 				PaymentMethod = entity.PaymentMethod,
 				DateCreated = entity.DateCreated,
-				Type = entity.Type
+				Type = entity.Type,
+				IsRefund = entity.IsRefund ?? false,
 			};
 		}
 

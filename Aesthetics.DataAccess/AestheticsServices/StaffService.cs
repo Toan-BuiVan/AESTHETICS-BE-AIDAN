@@ -55,29 +55,29 @@ namespace Aesthetics.Data.AestheticsServices
 				var allMatching = await _staffRepository.FindByPredicate(predicate);
 				var allMatchingList = allMatching.ToList();
 
-				////  Nếu có ServiceTypeId, lọc nhân viên theo loại dịch vụ
-				//if (searchRequest.ServicetypeId.HasValue)
-				//{
-				//	var clinicsWithServiceType = await _clinicRepository
-				//		.FindByPredicate(x => x.ServiceTypeId == searchRequest.ServicetypeId.Value && !x.DeleteStatus);
+				//  Nếu có ServiceTypeId, lọc nhân viên theo loại dịch vụ
+				if (searchRequest.ServicetypeId.HasValue)
+				{
+					var clinicsWithServiceType = await _clinicRepository
+						.FindByPredicate(x => x.ServiceTypeId == searchRequest.ServicetypeId.Value && !x.DeleteStatus);
 
-				//	var clinicIds = clinicsWithServiceType.Select(c => c.Id).ToList();
+					var clinicIds = clinicsWithServiceType.Select(c => c.Id).ToList();
 
-				//	if (clinicIds.Any())
-				//	{
-				//		var staffInClinics = await _clinicStaffRepository
-				//			.FindByPredicate(x => clinicIds.Contains(x.ClinicId ?? 0) && !x.DeleteStatus);
+					if (clinicIds.Any())
+					{
+						var staffInClinics = await _clinicStaffRepository
+							.FindByPredicate(x => clinicIds.Contains(x.ClinicId ?? 0) && !x.DeleteStatus);
 
-				//		var staffIds = staffInClinics.Select(x => x.StaffId).Distinct().ToList();
-				//		allMatchingList = allMatchingList
-				//			.Where(x => staffIds.Contains(x.Id))
-				//			.ToList();
-				//	}
-				//	else
-				//	{
-				//		allMatchingList = new List<StaffEntity>();
-				//	}
-				//}
+						var staffIds = staffInClinics.Select(x => x.StaffId).Distinct().ToList();
+						allMatchingList = allMatchingList
+							.Where(x => staffIds.Contains(x.Id))
+							.ToList();
+					}
+					else
+					{
+						allMatchingList = new List<StaffEntity>();
+					}
+				}
 				if (searchRequest.ClinicId.HasValue)
 				{
 					var staffInClinic = await _clinicStaffRepository

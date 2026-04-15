@@ -65,5 +65,6 @@ namespace Aesthetics.Entities.Entities
 		public virtual ICollection<CommentEntity> Comments { get; set; } = [];
 		public virtual ICollection<InvoiceEntity> Invoices { get; set; } = [];
 		public virtual ICollection<CustomerTreatmentPlanEntity> CustomerTreatmentPlans { get; set; } = [];
+		public virtual ICollection<CustomerPaymentInfoEntity>? PaymentInfos { get; set; } = [];
 	}
 }

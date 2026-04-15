@@ -15,5 +15,6 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public int? ClinicId { get; set; }
 
 		//public int? AccountId { get; set; }
+		public int? ServicetypeId { get; set; }
 	}
 }
