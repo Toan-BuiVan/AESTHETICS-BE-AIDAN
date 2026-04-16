@@ -18,7 +18,6 @@ namespace Aesthetics.Data.AestheticsServices
 {
 	public class RefundService : IRefundServcie
 	{
-		#region Dependencies
 
 		private readonly ILogger<RefundService> _logger;
 		private readonly IRefundRepository _refundRepository;
@@ -29,9 +28,6 @@ namespace Aesthetics.Data.AestheticsServices
 		private readonly IConfiguration _configuration;
 		private readonly ICommonService _commonService;
 
-		#endregion
-
-		#region Constructor
 
 		public RefundService(
 			ILogger<RefundService> logger,
@@ -53,9 +49,7 @@ namespace Aesthetics.Data.AestheticsServices
 			_commonService = commonService;
 		}
 
-		#endregion
 
-		#region Public Methods
 
 		/// <summary>
 		/// Tạo yêu cầu hoàn tiền mới
@@ -186,7 +180,6 @@ namespace Aesthetics.Data.AestheticsServices
 
 		/// <summary>
 		/// ✅ Cập nhật trạng thái hoàn tiền
-		/// NẾU STATUS = "APPROVED" THÌ GỌI PRIVATE METHOD HandleApprovedRefund()
 		/// </summary>
 		public async Task<bool> updaterefundservice(UpdtaeRefundModel model)
 		{
@@ -283,9 +276,6 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-		/// <summary>
-		/// Lấy danh sách yêu cầu hoàn tiền với các filter và phân trang
-		/// </summary>
 		/// <summary>
 		/// Lấy danh sách yêu cầu hoàn tiền với các filter và phân trang
 		/// </summary>
@@ -393,13 +383,11 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-		#endregion
 
 		#region Private Methods
 
 		/// <summary>
 		/// ✅ PRIVATE METHOD: Xử lý hoàn tiền khi status = "Approved"
-		/// Luôn gọi API VNPay để hoàn tiền theo tài liệu VNPAY
 		/// </summary>
 		private async Task<bool> HandleApprovedRefund(RefundEntity refund)
 		{
@@ -540,7 +528,6 @@ namespace Aesthetics.Data.AestheticsServices
 
 		/// <summary>
 		/// ✅ Gọi API VNPay để hoàn tiền
-		/// ✅ Theo tài liệu VNPay: Content-Type PHẢI là Application/json
 		/// </summary>
 		private async Task<string> ProcessVNPayRefund(
 			int refundId,
