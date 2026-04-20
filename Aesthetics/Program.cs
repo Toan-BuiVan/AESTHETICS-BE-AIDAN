@@ -2,20 +2,22 @@
 using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Data.AestheticsInterfaces.AI;
 using Aesthetics.Data.AestheticsInterfaces.EmailService;
+using Aesthetics.Data.AestheticsInterfaces.GHN;
 using Aesthetics.Data.AestheticsInterfaces.ICommonService;
 using Aesthetics.Data.AestheticsInterfaces.TokenService;
 using Aesthetics.Data.AestheticsServices;
 using Aesthetics.Data.AestheticsServices.AI;
 using Aesthetics.Data.AestheticsServices.CommonService;
 using Aesthetics.Data.AestheticsServices.EmailService;
+using Aesthetics.Data.AestheticsServices.GHN;
 using Aesthetics.Data.AestheticsServices.TokenService;
 using Aesthetics.Data.RepositoryInterfaces;
 using Aesthetics.Data.RepositoryServices;
-using ASP_NetCore_Aesthetics.Services.VnPaySevices;
+using Aesthetics.DTO.NetCore.DataObject.Model.Momo;
 using ASP_NetCore_Aesthetics.Services.MomoServices;
+using ASP_NetCore_Aesthetics.Services.VnPaySevices;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using Aesthetics.DTO.NetCore.DataObject.Model.Momo;
 using OfficeOpenXml;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -115,6 +117,12 @@ builder.Services.AddScoped<IAccountSessionsService, AccountSessionsService>();
 builder.Services.AddScoped<IInvoicePaymentService, InvoicePaymentService>();
 builder.Services.AddScoped<ICustomerPaymentInfoService, CustomerPaymentInfoService>();
 builder.Services.AddScoped<IRefundServcie, RefundService>();
+builder.Services.AddScoped<IGHNService, GHNService>();
+
+// Address Info
+builder.Services.AddScoped<IAddressInfoRepository, AddressInfoRepository>();
+builder.Services.AddScoped<IAddressInfoService, AddressInfoService>();
+
 
 // ===== Payment Services =====
 builder.Services.AddScoped<IVnPayService, VnPayService>();

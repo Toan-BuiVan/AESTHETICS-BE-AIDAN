@@ -1,0 +1,88 @@
+﻿using Aesthetics.Data.AestheticsInterfaces.GHN;
+using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Mvc;
+
+namespace Aesthetics.Controllers.GHN
+{
+	[Route("api/[controller]")]
+	[ApiController]
+	public class GHNController : ControllerBase
+	{
+		private readonly IGHNService _ghnService;
+
+		public GHNController(IGHNService ghnService)
+		{
+			_ghnService = ghnService;
+		}
+
+		[HttpGet("provinces")]
+		public async Task<IActionResult> GetProvinces()
+		{
+			try
+			{
+				var result = await _ghnService.GetProvincesAsync();
+				return Ok(result);
+			}
+			catch (Exception ex)
+			{
+				return StatusCode(500, new { message = ex.Message });
+			}
+		}
+
+		[HttpGet("districts/{provinceId}")]
+		public async Task<IActionResult> GetDistricts(int provinceId)
+		{
+			try
+			{
+				var result = await _ghnService.GetDistrictsAsync(provinceId);
+				return Ok(result);
+			}
+			catch (Exception ex)
+			{
+				return StatusCode(500, new { message = ex.Message });
+			}
+		}
+
+		[HttpGet("wards/{districtId}")]
+		public async Task<IActionResult> GetWards(int districtId)
+		{
+			try
+			{
+				var result = await _ghnService.GetWardsAsync(districtId);
+				return Ok(result);
+			}
+			catch (Exception ex)
+			{
+				return StatusCode(500, new { message = ex.Message });
+			}
+		}
+
+		[HttpGet("available-services")]
+		public async Task<IActionResult> GetAvailableServices([FromQuery] int toDistrict)
+		{
+			try
+			{
+				var result = await _ghnService.GetAvailableServicesAsync(2194, toDistrict, 6387655);
+				return Ok(result);
+			}
+			catch (Exception ex)
+			{
+				return StatusCode(500, new { message = ex.Message });
+			}
+		}
+
+		[HttpPost("calculate-shipping-fee")]
+		public async Task<IActionResult> CalculateShippingFee([FromBody] CalculateShippingFeeRequest request)
+		{
+			try
+			{
+				var result = await _ghnService.CalculateShippingFeeAsync(request, 6387655);
+				return Ok(result);
+			}
+			catch (Exception ex)
+			{
+				return StatusCode(500, new { message = ex.Message });
+			}
+		}
+	}
+}
