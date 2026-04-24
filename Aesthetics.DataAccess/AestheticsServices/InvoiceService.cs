@@ -32,7 +32,8 @@ namespace Aesthetics.Data.AestheticsServices
 		private readonly IWalletRepository _walletRepository;
 		private readonly IAppointmentRepositoty _appointmentRepository; 
 		private readonly ICustomerTreatmentPlansRepository _customerTreatmentPlansRepository;  
-		private readonly ICustomerTreatmentSessionsRepository _customerTreatmentSessionsRepository;  
+		private readonly ICustomerTreatmentSessionsRepository _customerTreatmentSessionsRepository;
+		private readonly IAddressInfoRepository _addressInfoRepository;
 
 		#endregion
 
@@ -52,7 +53,8 @@ namespace Aesthetics.Data.AestheticsServices
 			IWalletRepository walletRepository,
 			IAppointmentRepositoty appointmentRepository, 
 			ICustomerTreatmentPlansRepository customerTreatmentPlansRepository,  
-			ICustomerTreatmentSessionsRepository customerTreatmentSessionsRepository)  
+			ICustomerTreatmentSessionsRepository customerTreatmentSessionsRepository,
+			IAddressInfoRepository addressInfoRepository)  
 		{
 			_logger = logger;
 			_invoiceRepository = invoiceRepository;
@@ -67,7 +69,8 @@ namespace Aesthetics.Data.AestheticsServices
 			_walletRepository = walletRepository;
 			_appointmentRepository = appointmentRepository;  
 			_customerTreatmentPlansRepository = customerTreatmentPlansRepository;  
-			_customerTreatmentSessionsRepository = customerTreatmentSessionsRepository;  
+			_customerTreatmentSessionsRepository = customerTreatmentSessionsRepository;
+			_addressInfoRepository = addressInfoRepository;
 		}
 
 		#endregion
@@ -98,14 +101,12 @@ namespace Aesthetics.Data.AestheticsServices
 					"KháchhàngID {CustomerId}, LineItemCount: {LineItemCount}",
 					invoice?.CustomerId, invoice?.LineItems?.Count ?? 0);
 
-				// BƯỚC 1: Validate dữ liệu đầu vào
 				if (invoice == null)
 				{
 					_logger.LogWarning("CREATE_INVOICE_INVALID: Dữ liệu đầu vào không hợp lệ");
 					return false;
 				}
 
-				// BƯỚC 2: Lặp qua mỗi LineItem (ProductId + Quantity) và tính giá
 				decimal totalBasePrice = 0;
 				var invoiceDetailsToCreate = new List<InvoiceDetailEntity>();
 				var processedProductIds = new List<int>();
@@ -119,7 +120,6 @@ namespace Aesthetics.Data.AestheticsServices
 					_logger.LogInformation("CREATE_INVOICE_PROCESS_PRODUCT: Xử lý sản phẩm {ItemIndex} - ProductId: {ProductId}, Quantity: {Quantity}",
 						itemIndex, lineItem.ProductId, quantity);
 
-					// Lấy sản phẩm từ database
 					var product = await _productRepository.GetById(lineItem.ProductId);
 					if (product == null || product.DeleteStatus)
 					{
@@ -128,7 +128,6 @@ namespace Aesthetics.Data.AestheticsServices
 						return false;
 					}
 
-					// Tính giá: Price × Quantity
 					decimal productPrice = product.SellingPrice ?? 0;
 					decimal itemTotal = productPrice * quantity;
 					totalBasePrice += itemTotal;
@@ -150,9 +149,8 @@ namespace Aesthetics.Data.AestheticsServices
 
 					_logger.LogInformation("CREATE_INVOICE_PRODUCT_CALCULATED: Sản phẩm {ItemIndex} - {ProductName}: {Price:C} × {Quantity} = {Total:C}",
 						itemIndex, product.ProductName, productPrice, quantity, itemTotal);
-				} // ✅ Vòng lặp kết thúc
+				} 
 
-				// BƯỚC 3: ✅ Áp dụng voucher chung cho toàn bộ hóa đơn (NẾU CÓ)
 				decimal invoiceDiscountValue = 0;
 				int? appliedVoucherId = null;
 
@@ -192,6 +190,12 @@ namespace Aesthetics.Data.AestheticsServices
 				// ✅ BƯỚC 5: Khai báo status TẠI ĐÂY - trước khi sử dụng
 				string status = GetInvoiceStatus(paidAmount, finalPrice);
 
+				string? shipToAddress = null;
+				if (invoice.CustomerId.HasValue && invoice.CustomerId.Value > 0)
+				{
+					shipToAddress = await GetFormattedDefaultAddressAsync(invoice.CustomerId.Value);
+				}
+
 				// BƯỚC 6: Tạo entity hóa đơn chính
 				var invoiceEntity = new InvoiceEntity
 				{
@@ -208,6 +212,7 @@ namespace Aesthetics.Data.AestheticsServices
 					Type = invoice.Type,
 					OrderStatus = "DangXuLy",
 					PaymentMethod = invoice.PaymentMethod ?? "ThanhToanOnline",
+					ShipToAddress = shipToAddress,
 					DeleteStatus = false
 				};
 
@@ -228,10 +233,9 @@ namespace Aesthetics.Data.AestheticsServices
 				foreach (var detail in invoiceDetailsToCreate)
 				{
 					detail.InvoiceId = invoiceEntity.Id;
-					detail.Status = status;              // ✅ Giờ status đã tồn tại
+					detail.Status = status;              
 					detail.StatusComment = false;
 
-					// ✅ Phân bổ voucher discount theo tỷ lệ giá (nếu có discount)
 					if (invoiceDiscountValue > 0 && totalBasePrice > 0)
 					{
 						decimal discountRatio = detail.TotalMoney.Value / totalBasePrice;
@@ -292,7 +296,6 @@ namespace Aesthetics.Data.AestheticsServices
 
 		/// <summary>
 		/// ✅ XÓA MỀM CHỈ CÁC CARTPRODUCTS CÓ PRODUCTID ĐƯỢC THÊM VÀO HÓA ĐƠN
-		/// Chỉ xóa những sản phẩm trong processedProductIds, không xóa toàn bộ cart
 		/// </summary>
 		private async Task SoftDeleteCartProductsByIds(int customerId, List<int> productIds)
 		{
@@ -349,6 +352,53 @@ namespace Aesthetics.Data.AestheticsServices
 			{
 				_logger.LogError(ex, "SOFT_DELETE_CART_EXCEPTION: Lỗi khi xóa mềm CartProducts - CustomerId: {CustomerId}",
 					customerId);
+			}
+		}
+
+		private async Task<string?> GetFormattedDefaultAddressAsync(int customerId)
+		{
+			try
+			{
+				_logger.LogInformation("GET_FORMATTED_ADDRESS: Lấy địa chỉ mặc định - CustomerId: {CustomerId}", customerId);
+
+				var addresses = await _addressInfoRepository.FindByPredicate(a =>
+					a.CustomerId == customerId &&
+					a.IsDefault == true &&
+					a.DeleteStatus == false);
+
+				var defaultAddress = addresses.FirstOrDefault();
+
+				if (defaultAddress == null)
+				{
+					_logger.LogWarning("GET_FORMATTED_ADDRESS_NOT_FOUND: Không tìm thấy địa chỉ mặc định - CustomerId: {CustomerId}", customerId);
+					return null;
+				}
+
+				var addressParts = new List<string>();
+
+				if (!string.IsNullOrWhiteSpace(defaultAddress.ProvinceName))
+					addressParts.Add(defaultAddress.ProvinceName);
+
+				if (!string.IsNullOrWhiteSpace(defaultAddress.DistrictName))
+					addressParts.Add(defaultAddress.DistrictName);
+
+				if (!string.IsNullOrWhiteSpace(defaultAddress.WardName))
+					addressParts.Add(defaultAddress.WardName);
+
+				if (!string.IsNullOrWhiteSpace(defaultAddress.DetailAddress))
+					addressParts.Add(defaultAddress.DetailAddress);
+
+				var formattedAddress = string.Join(";", addressParts);
+
+				_logger.LogInformation("GET_FORMATTED_ADDRESS_SUCCESS: Định dạng địa chỉ thành công - CustomerId: {CustomerId}, Address: {Address}",
+					customerId, formattedAddress);
+
+				return formattedAddress;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "GET_FORMATTED_ADDRESS_EXCEPTION: Lỗi khi lấy địa chỉ định dạng - CustomerId: {CustomerId}", customerId);
+				return null;
 			}
 		}
 

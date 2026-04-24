@@ -57,12 +57,12 @@ namespace Aesthetics.Controllers.GHN
 			}
 		}
 
-		[HttpGet("available-services")]
-		public async Task<IActionResult> GetAvailableServices([FromQuery] int toDistrict)
+		[HttpPost("calculate-shipping-fee")]
+		public async Task<IActionResult> CalculateShippingFee(CreateShippingOrderRequest createShippingOrder)
 		{
 			try
 			{
-				var result = await _ghnService.GetAvailableServicesAsync(2194, toDistrict, 6387655);
+				var result = await _ghnService.CalculateShippingFeesAsync(createShippingOrder, 2194, 6387655);
 				return Ok(result);
 			}
 			catch (Exception ex)
@@ -71,12 +71,17 @@ namespace Aesthetics.Controllers.GHN
 			}
 		}
 
-		[HttpPost("calculate-shipping-fee")]
-		public async Task<IActionResult> CalculateShippingFee([FromBody] CalculateShippingFeeRequest request)
+		[HttpPost("create-shipping-orders")]
+		public async Task<IActionResult> CreateShippingOrders([FromBody] CreateShippingOrderRequest request)
 		{
 			try
 			{
-				var result = await _ghnService.CalculateShippingFeeAsync(request, 6387655);
+				if (request?.InvoiceIds == null || request.InvoiceIds.Count == 0)
+				{
+					return BadRequest(new { message = "Vui lòng cung cấp ít nhất một hóa đơn" });
+				}
+
+				var result = await _ghnService.CreateShippingOrdersAsync(request, 2194, 6387655);
 				return Ok(result);
 			}
 			catch (Exception ex)
@@ -84,5 +89,19 @@ namespace Aesthetics.Controllers.GHN
 				return StatusCode(500, new { message = ex.Message });
 			}
 		}
+
+		//[HttpGet("available-services")]
+		//public async Task<IActionResult> GetAvailableServices([FromQuery] int toCustomerId)
+		//{
+		//	try
+		//	{
+		//		var result = await _ghnService.GetAvailableServicesAsync(toCustomerId, 2194, 6387655);
+		//		return Ok(result);
+		//	}
+		//	catch (Exception ex)
+		//	{
+		//		return StatusCode(500, new { message = ex.Message });
+		//	}
+		//}
 	}
 }

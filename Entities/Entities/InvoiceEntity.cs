@@ -70,6 +70,8 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>Cờ kiểm tra hoàn tiền</summary>
 		public bool? IsRefund { get; set; }
 
+		public string? ShipToAddress { get; set; }
+
 		// ✅ Navigation properties
 		public virtual CustomerEntity? Customer { get; set; }
 		public virtual StaffEntity? Staff { get; set; }
