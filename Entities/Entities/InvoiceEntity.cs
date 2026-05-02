@@ -70,7 +70,11 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>Cờ kiểm tra hoàn tiền</summary>
 		public bool? IsRefund { get; set; }
 
+		/// <summary>Địa chỉ giao hàng</summary>
 		public string? ShipToAddress { get; set; }
+
+		/// <summary>✅ Cờ đánh dấu hóa đơn đã giao hàng</summary>
+		public bool? IsDelivered { get; set; }
 
 		// ✅ Navigation properties
 		public virtual CustomerEntity? Customer { get; set; }

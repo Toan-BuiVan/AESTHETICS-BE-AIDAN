@@ -54,5 +54,7 @@ namespace Aesthetics.Data.AestheticsInterfaces
         Task<bool> UpdateInvoiceStatus(int invoiceId, string newStatus);
 
 		#endregion
+
+		Task<List<InvoiceExportModel>> ExportInvoicesByIdListAsync(ExportInvoiceOrder exportInvoice);
 	}
 }

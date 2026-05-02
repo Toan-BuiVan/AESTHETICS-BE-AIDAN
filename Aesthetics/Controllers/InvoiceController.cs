@@ -67,5 +67,37 @@ namespace Aesthetics.Controllers
 				data = new { invoiceId = request.InvoiceId, newStatus = request.NewStatus }
 			});
 		}
+
+		/// <summary>
+		/// Xuất thông tin hóa đơn kèm địa chỉ giao hàng
+		/// Export invoices with customer delivery address
+		/// </summary>
+		/// <param name="invoiceIds">Danh sách ID hóa đơn</param>
+		/// <returns>Danh sách hóa đơn đã xuất</returns>
+		[HttpPost("export")]
+		[Produces("application/json")]
+		public async Task<IActionResult> ExportInvoices([FromBody] ExportInvoiceOrder exportInvoice)
+		{
+			try
+			{
+				var exportedInvoices = await _invoiceService.ExportInvoicesByIdListAsync(exportInvoice);
+
+				if (exportedInvoices == null || exportedInvoices.Count == 0)
+				{
+					return NotFound(new { message = "Không tìm thấy hóa đơn nào để xuất" });
+				}
+
+				return Ok(new
+				{
+					success = true,
+					totalCount = exportedInvoices.Count,
+					data = exportedInvoices
+				});
+			}
+			catch (Exception ex)
+			{
+				return StatusCode(500, new { message = "Lỗi khi xuất hóa đơn", error = ex.Message });
+			}
+		}
 	}
 }

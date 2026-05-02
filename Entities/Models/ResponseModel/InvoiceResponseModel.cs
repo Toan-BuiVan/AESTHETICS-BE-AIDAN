@@ -41,6 +41,8 @@ namespace Aesthetics.Entities.Models.ResponseModel
 		public string? Type { get; set; }
 
 		public bool? IsRefund { get; set; }
+
+		public bool? IsDelivered { get; set; }
 	}
 
 	public class InvoiceDetailResponseModel
@@ -92,5 +94,58 @@ namespace Aesthetics.Entities.Models.ResponseModel
 	{
 		public InvoiceResponseModel? Invoice { get; set; }
 		public List<InvoiceDetailResponseModel>? InvoiceDetails { get; set; }
+	}
+
+
+	public class InvoiceExportModel
+	{
+		// Order Information
+		public int InvoiceId { get; set; }
+		public string? InvoiceCode { get; set; }
+		public string? OrderStatus { get; set; }
+		public string? Type { get; set; }
+		public DateTime? DateCreated { get; set; }
+
+		// Payment Information
+		public string? PaymentMethod { get; set; }
+		public string? PaymentStatus { get; set; }
+		public string? TransactionId { get; set; }
+		public decimal TotalMoney { get; set; }
+		public decimal DiscountValue { get; set; }
+		public decimal FinalPrice { get; set; }
+		public decimal PaidAmount { get; set; }
+		public decimal OutstandingBalance { get; set; }
+
+		// Delivery Information
+		public bool IsDelivered { get; set; }
+		public string? ShipToAddress { get; set; }
+
+		// Customer Information
+		public int CustomerId { get; set; }
+		public string? CustomerName { get; set; }
+		public string? CustomerPhone { get; set; }
+		public string? CustomerEmail { get; set; }
+
+		// Delivery Address Components
+		public string? DeliveryProvince { get; set; }
+		public string? DeliveryDistrict { get; set; }
+		public string? DeliveryWard { get; set; }
+		public string? DeliveryDetailAddress { get; set; }
+		public string? FullDeliveryAddress { get; set; }
+
+		// Invoice Details
+		public List<InvoiceDetailExportModel>? InvoiceDetails { get; set; }
+	}
+
+	public class InvoiceDetailExportModel
+	{
+		public int DetailId { get; set; }
+		public string? ProductName { get; set; }
+		public int Quantity { get; set; }
+		public decimal Price { get; set; }
+		public decimal TotalMoney { get; set; }
+		public decimal DiscountValue { get; set; }
+		public decimal FinalPrice { get; set; }
+		public string? Type { get; set; }
 	}
 }

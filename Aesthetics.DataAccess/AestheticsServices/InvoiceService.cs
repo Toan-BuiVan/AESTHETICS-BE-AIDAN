@@ -213,6 +213,7 @@ namespace Aesthetics.Data.AestheticsServices
 					OrderStatus = "DangXuLy",
 					PaymentMethod = invoice.PaymentMethod ?? "ThanhToanOnline",
 					ShipToAddress = shipToAddress,
+					IsDelivered = false,
 					DeleteStatus = false
 				};
 
@@ -955,6 +956,7 @@ namespace Aesthetics.Data.AestheticsServices
 				PaymentMethod = entity.PaymentMethod,
 				DateCreated = entity.DateCreated,
 				Type = entity.Type,
+				IsDelivered = entity.IsDelivered ?? false,
 				IsRefund = entity.IsRefund ?? false,
 			};
 		}
@@ -1575,6 +1577,166 @@ namespace Aesthetics.Data.AestheticsServices
 			{
 				_logger.LogError(ex, "UPDATE_CUSTOMER_TREATMENT_PLANS_STATUS_EXCEPTION: Lỗi khi cập nhật status plans");
 			}
+		}
+
+		/// <summary>
+		/// Xuất thông tin hóa đơn và địa chỉ giao hàng cho danh sách hóa đơn
+		/// Export invoice details with customer delivery address for a list of invoice IDs
+		/// </summary>
+		/// <param name="invoiceIds">Danh sách ID hóa đơn cần xuất</param>
+		/// <returns>Danh sách thông tin hóa đơn kèm địa chỉ giao hàng</returns>
+		/// <summary>
+		/// Xuất thông tin hóa đơn và địa chỉ giao hàng cho danh sách hóa đơn
+		/// Export invoice details with customer delivery address for a list of invoice IDs
+		/// </summary>
+		/// <param name="exportInvoice">Request chứa danh sách ID hóa đơn cần xuất</param>
+		/// <returns>Danh sách thông tin hóa đơn kèm địa chỉ giao hàng</returns>
+		public async Task<List<InvoiceExportModel>> ExportInvoicesByIdListAsync(ExportInvoiceOrder exportInvoice)
+		{
+			try
+			{
+				_logger.LogInformation("EXPORT_INVOICE_START: Bắt đầu xuất hóa đơn - InvoiceCount: {Count}", exportInvoice.invoiceIds?.Count ?? 0);
+
+				if (exportInvoice.invoiceIds == null || exportInvoice.invoiceIds.Count == 0)
+				{
+					_logger.LogWarning("EXPORT_INVOICE_INVALID: Danh sách ID hóa đơn rỗng");
+					return new List<InvoiceExportModel>();
+				}
+
+				var exportModels = new List<InvoiceExportModel>();
+
+				foreach (var invoiceId in exportInvoice.invoiceIds)
+				{
+					try
+					{
+						// Get invoice data
+						var invoice = await _invoiceRepository.GetById(invoiceId);
+						if (invoice == null)
+						{
+							_logger.LogWarning("EXPORT_INVOICE_NOT_FOUND: Hóa đơn không tồn tại - InvoiceId: {InvoiceId}", invoiceId);
+							continue;
+						}
+
+						// Get customer info
+						var customer = invoice.CustomerId.HasValue
+							? await _customerRepository.GetById(invoice.CustomerId.Value)
+							: null;
+
+						if (customer == null)
+						{
+							_logger.LogWarning("EXPORT_INVOICE_CUSTOMER_NOT_FOUND: Khách hàng không tồn tại - InvoiceId: {InvoiceId}, CustomerId: {CustomerId}",
+								invoiceId, invoice.CustomerId);
+							continue;
+						}
+
+						// Get delivery address
+						var deliveryAddress = await _addressInfoRepository.FindByPredicate(
+							a => a.CustomerId == customer.Id && a.IsDefault == true);
+						var addressInfo = deliveryAddress.FirstOrDefault();
+
+						// Get invoice details
+						var invoiceDetails = await _invoiceDetailsRepository.FindByPredicate(
+							d => d.InvoiceId == invoiceId && !d.DeleteStatus);
+
+						var exportModel = new InvoiceExportModel
+						{
+							// Order Information
+							InvoiceId = invoice.Id,
+							InvoiceCode = $"INV-{invoice.Id:D6}",
+							OrderStatus = invoice.OrderStatus,
+							Type = invoice.Type,
+							DateCreated = invoice.DateCreated,
+							PaymentMethod = invoice.PaymentMethod,
+							PaymentStatus = invoice.Status,
+							TransactionId = invoice.TransactionId,
+
+							// Payment Information
+							TotalMoney = invoice.TotalMoney ?? 0,
+							DiscountValue = invoice.DiscountValue ?? 0,
+							FinalPrice = invoice.FinalPrice ?? 0,
+							PaidAmount = invoice.PaidAmount ?? 0,
+							OutstandingBalance = invoice.OutstandingBalance ?? 0,
+
+							// Delivery Information
+							IsDelivered = invoice.IsDelivered ?? false,
+							ShipToAddress = invoice.ShipToAddress,
+
+							// Customer Information
+							CustomerId = customer.Id,
+							CustomerName = customer.FullName,
+							CustomerPhone = customer.Phone,
+							CustomerEmail = customer.Email,
+
+							// Delivery Address
+							DeliveryProvince = addressInfo?.ProvinceName,
+							DeliveryDistrict = addressInfo?.DistrictName,
+							DeliveryWard = addressInfo?.WardName,
+							DeliveryDetailAddress = addressInfo?.DetailAddress,
+							FullDeliveryAddress = addressInfo != null
+								? BuildFullAddress(addressInfo)
+								: invoice.ShipToAddress,
+
+							// Invoice Details
+							InvoiceDetails = invoiceDetails.Select(d => new InvoiceDetailExportModel
+							{
+								DetailId = d.Id,
+								ProductName = d.ProductId.HasValue && d.Product != null
+									? d.Product.ProductName
+									: (d.ServiceId.HasValue && d.Service != null
+										? d.Service.ServiceName
+										: null),
+								Quantity = d.Quantity ?? 0,
+								Price = d.Price ?? 0,
+								TotalMoney = d.TotalMoney ?? 0,
+								DiscountValue = d.DiscountValue ?? 0,
+								FinalPrice = d.FinalPrice ?? 0,
+								Type = d.Type
+							}).ToList()
+						};
+
+						exportModels.Add(exportModel);
+
+						_logger.LogInformation("EXPORT_INVOICE_SUCCESS: Xuất hóa đơn thành công - InvoiceId: {InvoiceId}, CustomerName: {CustomerName}",
+							invoiceId, customer.FullName);
+					}
+					catch (Exception ex)
+					{
+						_logger.LogError(ex, "EXPORT_INVOICE_ERROR: Lỗi khi xuất hóa đơn - InvoiceId: {InvoiceId}", invoiceId);
+						continue;
+					}
+				}
+
+				_logger.LogInformation("EXPORT_INVOICE_COMPLETED: Xuất hóa đơn hoàn tất - ExportedCount: {Count}", exportModels.Count);
+				return exportModels;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "EXPORT_INVOICE_FATAL: Lỗi toàn cục khi xuất danh sách hóa đơn");
+				return new List<InvoiceExportModel>();
+			}
+		}
+
+		/// <summary>
+		/// Hỗ trợ: Xây dựng địa chỉ giao hàng đầy đủ
+		/// Helper: Build complete delivery address
+		/// </summary>
+		private string BuildFullAddress(AddressInfoEntity addressInfo)
+		{
+			var addressParts = new List<string>();
+
+			if (!string.IsNullOrWhiteSpace(addressInfo.DetailAddress))
+				addressParts.Add(addressInfo.DetailAddress);
+
+			if (!string.IsNullOrWhiteSpace(addressInfo.WardName))
+				addressParts.Add(addressInfo.WardName);
+
+			if (!string.IsNullOrWhiteSpace(addressInfo.DistrictName))
+				addressParts.Add(addressInfo.DistrictName);
+
+			if (!string.IsNullOrWhiteSpace(addressInfo.ProvinceName))
+				addressParts.Add(addressInfo.ProvinceName);
+
+			return string.Join(", ", addressParts.Where(p => !string.IsNullOrWhiteSpace(p)));
 		}
 	}
 }
