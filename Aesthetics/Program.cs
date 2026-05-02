@@ -118,6 +118,7 @@ builder.Services.AddScoped<IInvoicePaymentService, InvoicePaymentService>();
 builder.Services.AddScoped<ICustomerPaymentInfoService, CustomerPaymentInfoService>();
 builder.Services.AddScoped<IRefundServcie, RefundService>();
 builder.Services.AddScoped<IGHNService, GHNService>();
+builder.Services.AddScoped<IStatisticsService, StatisticsService>();
 
 // Address Info
 builder.Services.AddScoped<IAddressInfoRepository, AddressInfoRepository>();

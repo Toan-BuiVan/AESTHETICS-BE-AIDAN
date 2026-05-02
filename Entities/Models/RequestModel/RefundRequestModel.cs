@@ -36,7 +36,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public int? InvoiceId { get; set; }
 		public int? CustomerId { get; set; }
 		public int? StaffId { get; set; }
-		public int? startdate { get; set; }
-		public int? enddate { get; set; }
+		public DateTime? startdate { get; set; }
+		public DateTime? enddate { get; set; }
 	}
 }

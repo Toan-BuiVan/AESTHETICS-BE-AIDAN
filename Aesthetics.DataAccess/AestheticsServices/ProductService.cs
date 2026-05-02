@@ -4,11 +4,11 @@ using Aesthetics.Data.RepositoryInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ClosedXML.Excel;
 using Microsoft.Extensions.Logging;
-using OfficeOpenXml;
 using System;
 using System.Collections.Generic;
-using System.Linq;
+using System.Xml.Linq;
 using System.Linq.Expressions;
 using System.Text;
 using System.Threading.Tasks;
@@ -436,43 +436,34 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-		public async Task<byte[]> ExportToExcelAsync(exportproduct product)
+		public async Task<byte[]?> ExportToExcelAsync(exportproduct product)
 		{
 			try
 			{
-				_logger.LogInformation("Start exporting Products to Excel");
+				_logger.LogInformation("Starting ExportToExcelAsync with XLWorkbook");
+
 				Expression<Func<ProductEntity, bool>> predicate = x => x.DeleteStatus != true;
 
-				// Check if ProductIds list is provided and not empty
 				if (product.ProductIds != null && product.ProductIds.Any())
 				{
-					// Filter by the provided list of product IDs
-				 predicate = predicate.And(x => product.ProductIds.Contains(x.Id));
+					predicate = predicate.And(x => product.ProductIds.Contains(x.Id));
 					_logger.LogInformation("Exporting {Count} specific products by IDs", product.ProductIds.Count);
 				}
 				else
 				{
-					// If no specific IDs provided, export all products (you might want to limit this)
 					_logger.LogInformation("Exporting all active products");
 				}
 
-				// Get all matching products
 				var allProducts = await _productRepository.FindByPredicate(predicate);
 				var allProductsList = allProducts.ToList();
 
-				// If no products found, return empty Excel
 				if (!allProductsList.Any())
 				{
 					_logger.LogWarning("No products found for export");
-					return CreateEmptyExcel();
+					return Array.Empty<byte>();
 				}
 
-				// Get all unique ServiceTypeIds and SupplierIds
-				//var serviceTypeIds = allProductsList
-				//	.Where(x => x.ServiceTypeId.HasValue)
-				//	.Select(x => x.ServiceTypeId.Value)
-				//	.Distinct()
-				//	.ToList();
+				_logger.LogInformation("Found {Count} products to export", allProductsList.Count);
 
 				var supplierIds = allProductsList
 					.Where(x => x.SupplierId.HasValue)
@@ -480,135 +471,144 @@ namespace Aesthetics.Data.AestheticsServices
 					.Distinct()
 					.ToList();
 
-				// Load all service types and suppliers in batch
-				var serviceTypes = new Dictionary<int, ServiceTypeEntity>();
 				var suppliers = new Dictionary<int, SupplierEntity>();
-
-				//if (serviceTypeIds.Any())
-				//{
-				//	var serviceTypesList = await _serviceTypeRepository.FindByPredicate(x => serviceTypeIds.Contains(x.Id));
-				//	serviceTypes = serviceTypesList.ToDictionary(x => x.Id, x => x);
-				//}
-
 				if (supplierIds.Any())
 				{
 					var suppliersList = await _supplierRepository.FindByPredicate(x => supplierIds.Contains(x.Id));
 					suppliers = suppliersList.ToDictionary(x => x.Id, x => x);
+					_logger.LogInformation("Loaded {Count} suppliers", suppliers.Count);
 				}
 
-				// Apply navigation properties to products
-				foreach (var productEntity in allProductsList)
+				foreach (var prod in allProductsList)
 				{
-					//if (productEntity.ServiceTypeId.HasValue && serviceTypes.ContainsKey(productEntity.ServiceTypeId.Value))
-					//{
-					//	productEntity.ServiceType = serviceTypes[productEntity.ServiceTypeId.Value];
-					//}
-					if (productEntity.SupplierId.HasValue && suppliers.ContainsKey(productEntity.SupplierId.Value))
+					if (prod.SupplierId.HasValue && suppliers.TryGetValue(prod.SupplierId.Value, out var supplier))
 					{
-						productEntity.Supplier = suppliers[productEntity.SupplierId.Value];
+						prod.Supplier = supplier;
 					}
 				}
 
-				// Order results by ProductName
-				var finalResults = allProductsList.OrderBy(x => x.ProductName).ToList();
+				var finalResults = allProductsList
+					.OrderBy(x => x.Id)
+					.ToList();
 
-				using (var package = new ExcelPackage())
+				_logger.LogInformation("Creating Excel export with {Count} products", finalResults.Count);
+
+				byte[] result = null;
+
+				try
 				{
-					var worksheet = package.Workbook.Worksheets.Add("Products");
+					// ✅ Tạo workbook với SimpleMode để tránh lỗi
+					var workbook = new XLWorkbook();
+					_logger.LogInformation("Workbook created successfully");
 
-					// Headers
-					worksheet.Cells[1, 1].Value = "Id";
-					worksheet.Cells[1, 2].Value = "ServiceTypeName";
-					worksheet.Cells[1, 3].Value = "SupplierName";
-					worksheet.Cells[1, 4].Value = "ProductName";
-					worksheet.Cells[1, 5].Value = "Description";
-					worksheet.Cells[1, 6].Value = "SellingPrice";
-					worksheet.Cells[1, 7].Value = "Quantity";
-					worksheet.Cells[1, 8].Value = "Unit";
-					worksheet.Cells[1, 9].Value = "MinimumStock";
-					worksheet.Cells[1, 10].Value = "ProductImages";
-					worksheet.Cells[1, 11].Value = "CostPrice";
-					worksheet.Cells[1, 12].Value = "Status";
+					var worksheet = workbook.Worksheets.Add("Products");
+					_logger.LogInformation("Worksheet 'Products' added successfully");
 
-					// Data rows
+					// ✅ Headers - không formatting phức tạp
+					worksheet.Cell(1, 1).Value = "Id";
+					worksheet.Cell(1, 2).Value = "SupplierName";
+					worksheet.Cell(1, 3).Value = "ProductName";
+					worksheet.Cell(1, 4).Value = "Description";
+					worksheet.Cell(1, 5).Value = "SellingPrice";
+					worksheet.Cell(1, 6).Value = "Quantity";
+					worksheet.Cell(1, 7).Value = "Unit";
+					worksheet.Cell(1, 8).Value = "MinimumStock";
+					worksheet.Cell(1, 9).Value = "CostPrice";
+
+					_logger.LogInformation("Headers added successfully");
+
+					// ✅ Simple formatting - chỉ Bold font
+					for (int col = 1; col <= 9; col++)
+					{
+						worksheet.Cell(1, col).Style.Font.Bold = true;
+					}
+
+					_logger.LogInformation("Header formatting applied");
+
+					// ✅ Data
+					int dataRowCount = 0;
 					for (int i = 0; i < finalResults.Count; i++)
 					{
-						var row = i + 2;
-						worksheet.Cells[row, 1].Value = finalResults[i].Id;
-						//worksheet.Cells[row, 2].Value = finalResults[i].ServiceType?.ServiceTypeName;
-						worksheet.Cells[row, 3].Value = finalResults[i].Supplier?.SupplierName;
-						worksheet.Cells[row, 4].Value = finalResults[i].ProductName;
-						worksheet.Cells[row, 5].Value = finalResults[i].Description;
-						worksheet.Cells[row, 6].Value = finalResults[i].SellingPrice;
-						worksheet.Cells[row, 7].Value = finalResults[i].Quantity;
-						worksheet.Cells[row, 8].Value = finalResults[i].Unit;
-						worksheet.Cells[row, 9].Value = finalResults[i].MinimumStock;
-						worksheet.Cells[row, 10].Value = finalResults[i].ProductImages;
-						worksheet.Cells[row, 11].Value = finalResults[i].CostPrice;
+						try
+						{
+							var row = i + 2;
+							var item = finalResults[i];
+
+							worksheet.Cell(row, 1).Value = item.Id;
+							worksheet.Cell(row, 2).Value = item.Supplier?.SupplierName ?? "";
+							worksheet.Cell(row, 3).Value = item.ProductName ?? "";
+							worksheet.Cell(row, 4).Value = item.Description ?? "";
+							worksheet.Cell(row, 5).Value = item.SellingPrice;
+							worksheet.Cell(row, 6).Value = item.Quantity;
+							worksheet.Cell(row, 7).Value = item.Unit ?? "";
+							worksheet.Cell(row, 8).Value = item.MinimumStock;
+							worksheet.Cell(row, 9).Value = item.CostPrice;
+
+							dataRowCount++;
+
+							if (dataRowCount % 100 == 0)
+							{
+								_logger.LogInformation("Added {Count} rows", dataRowCount);
+							}
+						}
+						catch (Exception rowEx)
+						{
+							_logger.LogError(rowEx, "Error adding row {RowIndex} for product {ProductId}",
+								i, finalResults[i].Id);
+							throw;
+						}
 					}
 
-					// Format the worksheet
-					worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
+					_logger.LogInformation("Data added successfully. Total rows: {RowCount}", dataRowCount);
 
-					// Add header formatting
-					using (var range = worksheet.Cells[1, 1, 1, 12])
+					// ✅ Auto-fit columns
+					try
 					{
-						range.Style.Font.Bold = true;
-						range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-						range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-						range.Style.Border.Top.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
-						range.Style.Border.Bottom.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
-						range.Style.Border.Left.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
-						range.Style.Border.Right.Style = OfficeOpenXml.Style.ExcelBorderStyle.Thin;
+						worksheet.Columns().AdjustToContents();
+						_logger.LogInformation("Columns adjusted to contents");
+					}
+					catch (Exception adjEx)
+					{
+						_logger.LogWarning(adjEx, "Warning: Could not adjust columns, continuing anyway");
+						// Continue anyway - không fail nếu adjust không được
 					}
 
-					_logger.LogInformation("Successfully exported {Count} products to Excel", finalResults.Count);
-					return package.GetAsByteArray();
+					// ✅ Save to memory stream
+					using (var stream = new MemoryStream())
+					{
+						_logger.LogInformation("Starting to save workbook to stream");
+
+						workbook.SaveAs(stream);
+						_logger.LogInformation("Workbook saved to stream. Stream length: {Length}", stream.Length);
+
+						result = stream.ToArray();
+						_logger.LogInformation("Excel file converted to byte array. Size: {Size} bytes", result.Length);
+
+						if (result.Length == 0)
+						{
+							_logger.LogError("ERROR: Result byte array is empty!");
+							return null;
+						}
+					}
+
+					// ✅ Dispose workbook
+					workbook.Dispose();
+					_logger.LogInformation("Excel workbook disposed successfully");
+
+					return result;
+				}
+				catch (Exception xlEx)
+				{
+					_logger.LogError(xlEx, "Error creating workbook - Exception type: {ExceptionType}, Message: {Message}, StackTrace: {StackTrace}",
+						xlEx.GetType().Name, xlEx.Message, xlEx.StackTrace);
+					throw;
 				}
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "Export Products to Excel exception");
+				_logger.LogError(ex, "Export Products to Excel exception - Exception type: {ExceptionType}, Message: {Message}",
+					ex.GetType().Name, ex.Message);
 				return null;
-			}
-		}
-
-		private byte[] CreateEmptyExcel()
-		{
-			using (var package = new ExcelPackage())
-			{
-				var worksheet = package.Workbook.Worksheets.Add("Products");
-
-				// Headers
-				worksheet.Cells[1, 1].Value = "Id";
-				worksheet.Cells[1, 2].Value = "ServiceTypeName";
-				worksheet.Cells[1, 3].Value = "SupplierName";
-				worksheet.Cells[1, 4].Value = "ProductName";
-				worksheet.Cells[1, 5].Value = "Description";
-				worksheet.Cells[1, 6].Value = "SellingPrice";
-				worksheet.Cells[1, 7].Value = "Quantity";
-				worksheet.Cells[1, 8].Value = "Unit";
-				worksheet.Cells[1, 9].Value = "MinimumStock";
-				worksheet.Cells[1, 10].Value = "ProductImages";
-				worksheet.Cells[1, 11].Value = "CostPrice";
-				worksheet.Cells[1, 12].Value = "Status";
-
-				// No data message
-				worksheet.Cells[2, 1].Value = "No products found";
-				worksheet.Cells["A2:L2"].Merge = true;
-				worksheet.Cells[2, 1].Style.HorizontalAlignment = OfficeOpenXml.Style.ExcelHorizontalAlignment.Center;
-				worksheet.Cells[2, 1].Style.Font.Italic = true;
-
-				// Format headers
-				using (var range = worksheet.Cells[1, 1, 1, 12])
-				{
-					range.Style.Font.Bold = true;
-					range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
-					range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
-				}
-
-				worksheet.Cells[worksheet.Dimension.Address].AutoFitColumns();
-				return package.GetAsByteArray();
 			}
 		}
 	}

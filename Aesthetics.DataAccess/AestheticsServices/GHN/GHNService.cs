@@ -311,6 +311,13 @@ namespace Aesthetics.Data.AestheticsServices.GHN
 							continue;
 						}
 
+						if (invoice.IsDelivered == true)
+						{
+							_logger.LogWarning($"Invoice {invoiceId} has already been delivered (IsDelivered = true)");
+							createdOrders.Add(new { invoiceId = invoiceId, success = false, error = $"Hóa đơn {invoiceId} đã được giao rồi, không thể tạo đơn hàng mới" });
+							continue;
+						}
+
 						if (!invoice.CustomerId.HasValue)
 						{
 							_logger.LogWarning($"Invoice {invoiceId} does not have a customer ID");
@@ -501,7 +508,7 @@ namespace Aesthetics.Data.AestheticsServices.GHN
 						{
 							payment_type_id = 2,
 							note = $"Đơn hàng từ hệ thống Aesthetics - Hóa đơn #{invoiceId}",
-							required_note = "CHOXEMHANG",
+							required_note = "CHOXEMHANGKHONGTHU",
 							from_name = "Aesthetics",
 							from_phone = "0332190444",
 							from_address = "Quang Hưng, Phù Cừ, Hưng Yên",
@@ -555,6 +562,8 @@ namespace Aesthetics.Data.AestheticsServices.GHN
 
 						var createOrderJsonContent = await createOrderResponse.Content.ReadAsStringAsync();
 						var createOrderResult = JsonDocument.Parse(createOrderJsonContent);
+						invoice.IsDelivered = true;
+						var updateInvoiceResult = await _invoiceRepository.UpdateEntity(invoice);
 
 						createdOrders.Add(new
 						{

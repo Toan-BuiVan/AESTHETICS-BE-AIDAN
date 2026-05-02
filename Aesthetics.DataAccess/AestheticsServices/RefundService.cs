@@ -102,8 +102,8 @@ namespace Aesthetics.Data.AestheticsServices
 
 				// ✅ Kiểm tra khách hàng không có yêu cầu hoàn tiền nào đang chờ xử lý
 				var existingRefund = await _refundRepository.FindByPredicate(
-					x => x.InvoiceId == model.InvoiceId && 
-						 (x.Status == "PendingApproval" || x.Status == "Approved") && 
+					x => x.InvoiceId == model.InvoiceId &&
+						 (x.Status == "PendingApproval" || x.Status == "Approved") &&
 						 !x.DeleteStatus);
 
 				if (existingRefund != null && existingRefund.Count > 0)
@@ -215,7 +215,7 @@ namespace Aesthetics.Data.AestheticsServices
 				{
 					_logger.LogWarning("UPDATE_REFUND_INVALID_STATUS_VALUE: Trạng thái không được hỗ trợ - Status: {Status}",
 						model.Status);
-					return false;		
+					return false;
 				}
 
 				// ✅ Lấy thông tin hoàn tiền hiện tại
@@ -427,7 +427,7 @@ namespace Aesthetics.Data.AestheticsServices
 					_logger.LogInformation("HANDLE_APPROVED_REFUND_CASH_ENTITY_UPDATED: RefundEntity được cập nhật (tiền mặt) - RefundId: {RefundId}, ApprovedDate: {ApprovedDate}",
 						refund.Id, refund.ApprovedDate);
 
-					return true; 
+					return true;
 				}
 
 				// ✅ BƯỚC 3: Kiểm tra TransactionId từ Invoice
@@ -495,7 +495,7 @@ namespace Aesthetics.Data.AestheticsServices
 				// ✅ BƯỚC 9: CẬP NHẬT REFUNDENTITY VỚI TRANSACTION ID TỪ VNPAY
 				refund.ApprovedDate = DateTime.UtcNow;
 				refund.CompletedDate = DateTime.UtcNow;
-				refund.RefundTransactionId = refundTransactionId; 
+				refund.RefundTransactionId = refundTransactionId;
 				refund.BankAccount = paymentInfo.BankAccountNumber;
 				refund.BankAccountName = paymentInfo.BankAccountName;
 				refund.BankName = paymentInfo.BankName;
@@ -571,7 +571,7 @@ namespace Aesthetics.Data.AestheticsServices
 				string vnp_RequestId = $"REFUND_{refundId}_{DateTime.UtcNow.Ticks}";
 				string vnp_Version = "2.1.0";
 				string vnp_Command = "refund";
-				string vnp_TransactionType = "02";  
+				string vnp_TransactionType = "02";
 				string vnp_TxnRef = originalTransactionId;
 				long vnp_Amount = (long)(refundAmount * 100);
 
@@ -579,12 +579,12 @@ namespace Aesthetics.Data.AestheticsServices
 					refundReason ?? "Refund",
 					@"[^\x20-\x7E]",
 					"");
-				string vnp_OrderInfo = $"REFUND_{refundId}"; 
+				string vnp_OrderInfo = $"REFUND_{refundId}";
 
-				string vnp_CreateBy = "System";  
-				
+				string vnp_CreateBy = "System";
+
 				string vnp_CreateDate = DateTime.Now.ToString("yyyyMMddHHmmss");
-				
+
 				string vnp_IpAddr = await GetServerIpAddress();
 
 				if (!invoice.PaymentDate.HasValue)
@@ -606,16 +606,16 @@ namespace Aesthetics.Data.AestheticsServices
 
 				string vnp_SecureHash = ComputeHmacSHA512(hashData, vnp_HashSecret);
 				_logger.LogInformation("HASH_COMPUTED: {Hash}", vnp_SecureHash);
-				
+
 
 				// Thêm vào hàm ProcessVNPayRefund, trước khi tính hash:
 				_logger.LogInformation("=== HASH SECRET DEBUG ===");
 				_logger.LogInformation("Secret from Config: {Secret}", vnp_HashSecret);
 				_logger.LogInformation("Secret Length: {Length}", vnp_HashSecret.Length);
-				_logger.LogInformation("Secret Bytes (HEX): {Hex}", 
+				_logger.LogInformation("Secret Bytes (HEX): {Hex}",
 				string.Join(" ", System.Text.Encoding.UTF8.GetBytes(vnp_HashSecret)
 					.Select(b => b.ToString("X2"))));
-							_logger.LogInformation("=== END DEBUG ===");
+				_logger.LogInformation("=== END DEBUG ===");
 
 				var requestBody = new
 				{

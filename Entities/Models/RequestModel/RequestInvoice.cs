@@ -110,4 +110,10 @@ namespace Aesthetics.Entities.Models.RequestModel
 		/// <summary>Status mới: ChuaThanhToan, ThanhToanMotPhan, DaThanhToan, KhachHuy</summary>
 		public string NewStatus { get; set; }
 	}
+
+	public class ExportInvoiceOrder 
+	{
+		public List<int>? invoiceIds { get; set; }
+	}
+
 }
