@@ -370,6 +370,58 @@ namespace Aesthetics.Controllers
             }
         }
 
+        /// <summary>
+        /// ✅ Thống kê doanh thu theo ngày
+        /// GET: api/statistics/daily-revenue
+        /// </summary>
+        [HttpPost("daily-revenue")]
+        public async Task<IActionResult> GetDailyRevenueStatistics([FromBody] DailyRevenueStatisticsRequest request)
+        {
+            try
+            {
+                // ✅ Validate request
+                if (request == null || request.Month < 1 || request.Month > 12)
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Tháng phải từ 1 đến 12",
+                        data = (object)null
+                    });
+                }
+
+                if (request.Year < 2000 || request.Year > DateTime.Now.Year + 10)
+                {
+                    return BadRequest(new
+                    {
+                        success = false,
+                        message = "Năm không hợp lệ",
+                        data = (object)null
+                    });
+                }
+
+                // ✅ Gọi service
+                var result = await _statisticsService.GetDailyRevenueStatisticsAsync(request);
+
+                return Ok(new
+                {
+                    success = true,
+                    message = $"Thống kê doanh thu theo ngày tháng {request.Month}/{request.Year} thành công",
+                    data = result
+                });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new
+                {
+                    success = false,
+                    message = "Lỗi server khi lấy thống kê doanh thu",
+                    error = ex.Message,
+                    data = (object)null
+                });
+            }
+        }
+
         #endregion
     }
 }

@@ -1011,6 +1011,113 @@ namespace Aesthetics.Data.AestheticsServices
 			if (totalSpent >= 20_000_000) return "Silver";    // 20M
 			return "Normal";
 		}
-	}
+	
 	#endregion
+
+	/// <summary>
+	/// ✅ Thống kê doanh thu theo ngày trong 1 tháng
+	/// Trả về 30 bản ghi tương ứng 30 ngày
+	/// </summary>
+	public async Task<DailyRevenueStatisticsResponse> GetDailyRevenueStatisticsAsync(DailyRevenueStatisticsRequest request)
+		{
+			try
+			{
+				_logger.LogInformation("GetDailyRevenueStatistics - Month: {Month}, Year: {Year}", request.Month, request.Year);
+
+				// ✅ Validate input
+				if (request.Month < 1 || request.Month > 12)
+					throw new ArgumentException("Tháng phải từ 1 đến 12");
+
+				if (request.Year < 2000 || request.Year > DateTime.Now.Year + 10)
+					throw new ArgumentException("Năm không hợp lệ");
+
+				// ✅ Tính số ngày trong tháng
+				var daysInMonth = DateTime.DaysInMonth(request.Year, request.Month);
+
+				// ✅ Lấy tất cả hóa đơn trong tháng năm được yêu cầu
+				var startDate = new DateTime(request.Year, request.Month, 1);
+				var endDate = new DateTime(request.Year, request.Month, daysInMonth);
+
+				var invoices = await _invoiceRepository.FindByPredicate(i =>
+					i.DateCreated.HasValue &&
+					i.DateCreated.Value.Year == request.Year &&
+					i.DateCreated.Value.Month == request.Month &&
+					!i.DeleteStatus);
+
+				_logger.LogInformation("Found {InvoiceCount} invoices for {Month}/{Year}", invoices.Count, request.Month, request.Year);
+
+				// ✅ Nhóm hóa đơn theo ngày
+				var dailyStatistics = new List<DailyRevenueStatisticResponse>();
+
+				for (int day = 1; day <= 31; day++)
+				{
+					if (day > daysInMonth)
+						break;
+
+					var currentDate = new DateTime(request.Year, request.Month, day);
+
+					// Lấy hóa đơn của ngày này
+					var dayInvoices = invoices
+						.Where(i => i.DateCreated.Value.Date == currentDate.Date)
+						.ToList();
+
+					// ✅ Tính doanh thu đã thanh toán
+					// Bao gồm: Status = "DaThanhToan" (PaidAmount = FinalPrice) hoặc có PaidAmount > 0
+					decimal paidRevenue = dayInvoices
+						.Where(i => i.PaidAmount.HasValue && i.PaidAmount.Value > 0)
+						.Sum(i => i.PaidAmount.Value);
+
+					int paidInvoiceCount = dayInvoices
+						.Where(i => i.PaidAmount.HasValue && i.PaidAmount.Value > 0)
+						.Count();
+
+					// ✅ Tính doanh thu chưa thanh toán
+					// Bao gồm: Status = "ChuaThanhToan" (PaidAmount = 0) hoặc OutstandingBalance > 0
+					decimal unpaidRevenue = dayInvoices
+						.Where(i => i.OutstandingBalance.HasValue && i.OutstandingBalance.Value > 0)
+						.Sum(i => i.OutstandingBalance.Value);
+
+					int unpaidInvoiceCount = dayInvoices
+						.Where(i => i.OutstandingBalance.HasValue && i.OutstandingBalance.Value > 0)
+						.Count();
+
+					dailyStatistics.Add(new DailyRevenueStatisticResponse
+					{
+						Day = day,
+						Month = request.Month,
+						Year = request.Year,
+						DateString = currentDate.ToString("yyyy-MM-dd"),
+						FormattedDate = currentDate.ToString("dd/MM/yyyy"),
+						PaidRevenue = paidRevenue,
+						UnpaidRevenue = unpaidRevenue,
+						PaidInvoiceCount = paidInvoiceCount,
+						UnpaidInvoiceCount = unpaidInvoiceCount
+					});
+				}
+
+				// ✅ Tính tổng hợp
+				var response = new DailyRevenueStatisticsResponse
+				{
+					Month = request.Month,
+					Year = request.Year,
+					MonthYearString = $"{request.Month:D2}/{request.Year}",
+					DailyStatistics = dailyStatistics,
+					TotalPaidRevenue = dailyStatistics.Sum(d => d.PaidRevenue),
+					TotalUnpaidRevenue = dailyStatistics.Sum(d => d.UnpaidRevenue),
+					TotalPaidInvoices = dailyStatistics.Sum(d => d.PaidInvoiceCount),
+					TotalUnpaidInvoices = dailyStatistics.Sum(d => d.UnpaidInvoiceCount)
+				};
+
+				_logger.LogInformation("Daily revenue statistics - Paid: {Paid:C}, Unpaid: {Unpaid:C}",
+					response.TotalPaidRevenue, response.TotalUnpaidRevenue);
+
+				return response;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Error getting daily revenue statistics for {Month}/{Year}", request.Month, request.Year);
+				throw;
+			}
+		}
+	}
 }

@@ -72,5 +72,11 @@ namespace Aesthetics.Data.AestheticsInterfaces
 		/// 🆕 Lấy thống kê hóa đơn theo trạng thái thanh toán
 		/// </summary>
 		Task<List<InvoiceStatusStatistic>> GetInvoiceStatusStatisticsAsync(DateRangeStatisticsRequest request);
+
+		/// <summary>
+		/// ✅ Thống kê doanh thu theo ngày trong 1 tháng
+		/// Trả về 30 bản ghi (hoặc 31) tương ứng các ngày trong tháng
+		/// </summary>
+		Task<DailyRevenueStatisticsResponse> GetDailyRevenueStatisticsAsync(DailyRevenueStatisticsRequest request);
 	}
 }

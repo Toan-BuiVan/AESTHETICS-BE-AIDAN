@@ -1097,6 +1097,12 @@ namespace Aesthetics.Data.AestheticsServices.AI
 					"[STEP 1] Starting ProcessUserQueryAsync - UserId: {UserId}, Query: {Query}",
 					request.UserId,
 					request.UserQuery);
+				var friendlyResponse = CheckFriendlyQuestion(request.UserQuery);
+				if (friendlyResponse != null)
+				{
+					_logger.LogInformation("[FRIENDLY] Matched friendly question: {Query}", request.UserQuery);
+					return friendlyResponse;
+				}
 
 				// ✅ STEP 1: Lấy tools có sẵn
 				var toolsList = await GetAvailableToolsAsync();
@@ -1263,141 +1269,6 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			}
 		}
 
-		///// <summary>
-		///// 🆕 Generate chatbot response khi không có tool hoặc không có kết quả
-		///// Nếu là friendly question → trả lời ngay
-		///// Nếu cần trí tuệ nhân tạo → gọi LLM
-		///// </summary>
-		//private async Task<dynamic> GenerateChatbotResponse(string userQuery, string errorMessage, bool useLLM = false)
-		//{
-		//	_logger.LogInformation("[CHATBOT_MODE] Generating response for: {Query}, UseLLM: {UseLLM}", userQuery, useLLM);
-
-		//	// 🆕 Chatbot responses - nói chuyện thân thiện (không cần API)
-		//	var friendlyResponses = new Dictionary<string, string>
-		//	{
-		//		// Lời chào
-		//		{ "xin chào", "👋 Xin chào bạn! Mình là trợ lý AI của phòng khám thẩm mỹ. Mình có thể giúp bạn tìm kiếm dịch vụ, đặt lịch, hoặc trò chuyện cùng bạn. Bạn cần gì nào?" },
-		//		{ "hi", "👋 Hi bạn! Rất vui được gặp bạn. Mình có thể hỗ trợ bạn về các dịch vụ thẩm mỹ, đặt lịch khám, hoặc bất cứ điều gì bạn cần!" },
-		//		{ "hello", "👋 Hello! Welcome to our aesthetic clinic. How can I help you today?" },
-
-		//		// Câu hỏi về mình
-		//		{ "bạn là ai", "🤖 Mình là một trợ lý AI được thiết kế để hỗ trợ bạn tìm hiểu về các dịch vụ thẩm mỹ, đặt lịch khám, và trò chuyện về các vấn đề sắc đẹp." },
-		//		{ "bạn tên gì", "👤 Mình là AI Assistant của phòng khám. Bạn có thể gọi mình là Bác sĩ AI hoặc chỉ gọi là AI!" },
-
-		//		// Câu hỏi về khả năng
-		//		{ "bạn có thể làm gì", "✨ Mình có thể giúp bạn:\n• 🏥 Tìm kiếm dịch vụ thẩm mỹ\n• 👨‍⚕️ Xem danh sách các bác sĩ\n• 📅 Đặt lịch khám\n• ❌ Hủy lịch khám\n• 💄 Tư vấn sản phẩm chăm sóc\n• 💬 Trò chuyện với bạn về sắc đẹp" },
-
-		//		// Lời cảm ơn
-		//		{ "cảm ơn", "😊 Không có gì! Mình luôn sẵn lòng giúp bạn. Nếu có bất cứ câu hỏi nào khác, đừng ngần ngại hỏi mình nhé!" },
-		//		{ "cảm ơn bạn", "🙌 Bạn thích rồi! Mình sẵn sàng giúp bạn bất cứ lúc nào." },
-		//		{ "thanks", "😊 You're welcome! Feel free to ask me anything." },
-		//	};
-
-		//	var lowerQuery = userQuery.ToLower().Trim();
-
-		//	// ✅ CHECK friendly questions TRƯỚC (không cần API)
-		//	foreach (var kvp in friendlyResponses)
-		//	{
-		//		if (lowerQuery.Contains(kvp.Key))
-		//		{
-		//			_logger.LogInformation("[CHATBOT_FRIENDLY] Matched friendly question: {Key}", kvp.Key);
-
-		//			// 🆕 Dùng dynamic object thay vì anonymous type
-		//			dynamic response = new System.Dynamic.ExpandoObject();
-		//			response.success = true;
-		//			response.message = kvp.Value;
-		//			response.data = null;
-		//			response.toolUsed = "chatbot_friendly";
-		//			response.conversationUpdate = new
-		//			{
-		//				role = "assistant",
-		//				content = kvp.Value
-		//			};
-		//			return response;
-		//		}
-		//	}
-
-		//	// 🆕 Nếu không phải friendly question và useLLM = true → gọi LLM để trả lời
-		//	if (useLLM)
-		//	{
-		//		try
-		//		{
-		//			_logger.LogInformation("[CHATBOT_LLM] Calling LLM for intelligent response");
-
-		//			var systemPrompt = @"Bạn là một trợ lý AI thân thiện của phòng khám thẩm mỹ.
-
-
-		//					✅ HƯỚNG DẫN TRẢ LỜI:
-		//					1. Trả lời tất cả câu hỏi một cách tự nhiên, thân thiện, và hữu ích
-		//					2. Nếu câu hỏi hỏi ngày giờ → TRẢ LỜI CHÍNH XÁC dựa trên thông tin trên
-		//					3. Nếu câu hỏi liên quan đến thẩm mỹ/da → cung cấp lời khuyên tốt nhất
-		//					4. Nếu câu hỏi không liên quan đến phòng khám → vẫn trả lời bình thường + gợi ý dịch vụ
-		//					5. Giữ câu trả lời ngắn gọn (tối đa 200 từ)
-		//					6. KHÔNG bao giờ nói 'tôi chưa hiểu' - luôn có gắng trả lời hữu ích
-
-		//					📝 VÍ DỤ:
-		//					- Q: 'Hôm nay là ngày mấy?' → A: 'Hôm nay là {DateTime.Now:dddd, ngày dd/MM/yyyy} ({DateTime.Now:dd/MM/yyyy})'
-		//					- Q: 'Bây giờ mấy giờ?' → A: 'Bây giờ là {DateTime.Now:HH:mm}'
-		//					- Q: 'Da mụn nên chăm sóc như thế nào?' → A: '[Chi tiết về chăm sóc] Phòng khám chúng tôi có dịch vụ điều trị mụn hiệu quả!'
-		//					- Q: 'Việt Nam có bao nhiêu dân?' → A: '[Trả lời] Nếu bạn quan tâm đến chăm sóc da,...'
-
-		//					⚠️ KHÔNG ĐƯỢC:
-		//					- Nói 'Xin lỗi, tôi chưa hiểu'
-		//					- Từ chối trả lời
-		//					- Đưa ra thông tin không chính xác""";
-
-		//			var llmResponse = await _llmService.CallLLMAsync(
-		//				systemPrompt,
-		//				userQuery,
-		//				new List<LLMMessage>());
-
-		//			if (!string.IsNullOrWhiteSpace(llmResponse))
-		//			{
-		//				_logger.LogInformation("[CHATBOT_LLM] LLM response received");
-
-		//				// 🆕 Dùng dynamic object thay vì anonymous type
-		//				dynamic response = new System.Dynamic.ExpandoObject();
-		//				response.success = true;
-		//				response.message = llmResponse;
-		//				response.data = null;
-		//				response.toolUsed = "chatbot_llm";
-		//				response.conversationUpdate = new
-		//				{
-		//					role = "assistant",
-		//					content = llmResponse
-		//				};
-		//				return response;
-		//			}
-		//		}
-		//		catch (Exception ex)
-		//		{
-		//			_logger.LogError(ex, "[CHATBOT_LLM] Error calling LLM, falling back to default message");
-		//		}
-		//	}
-
-		//	// ❌ Nếu không trùng khớp friendly response và không dùng LLM → trả lỗi
-		//	_logger.LogInformation("[CHATBOT_FALLBACK] No friendly match and useLLM=false, returning error message");
-
-		//	// ✅ HOTLINE support khi AI không trả lời được
-		//	string hotlineSupport = "☎️ <strong>Xin lỗi, tôi không thể trả lời câu hỏi này.</strong>\n\nVui lòng liên hệ hotline của chúng tôi để được hỗ trợ trực tiếp:\n📞 <strong>0383102388</strong>\n\nĐội ngũ của chúng tôi sẽ sẵn lòng giúp bạn!";
-		//	string finalMessage = errorMessage != null && errorMessage.Length > 0
-		//		? $"❌ {errorMessage}\n\n{hotlineSupport}"
-		//		: hotlineSupport;
-
-		//	// 🆕 Dùng dynamic object thay vì anonymous type
-		//	dynamic finalResponse = new System.Dynamic.ExpandoObject();
-		//	finalResponse.success = false;
-		//	finalResponse.message = finalMessage;
-		//	finalResponse.data = null;
-		//	finalResponse.toolUsed = null;
-		//	finalResponse.conversationUpdate = new
-		//	{
-		//		role = "assistant",
-		//		content = finalMessage
-		//	};
-		//	return finalResponse;
-		//}
-
 		// ===== PRIVATE HELPER METHODS =====
 
 		private string BuildSystemPrompt()
@@ -1465,6 +1336,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 
 				⚡ CRITICAL DECISION RULES:
 
+
 				📌 Khi query hỏi ""gói điều trị"", ""liệu trình"", ""buổi điều trị"", ""thông tin các buổi"":
 				   → PHẢI DÙNG: getTreatmentPackagesByServiceName (trả về gói + buổi chi tiết)
 				   → KHÔNG dùng: getDoctorsForService
@@ -1509,6 +1381,28 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				   - 'Đặt lịch buổi 3 của liệu trình trẻ hóa da' → {""sessionNumber"": 3, ""treatmentPlanId"": ""trẻ hóa da""}
 				   - 'Cho tôi đặt lịch khám buổi 1 của gói liệu trình' → {""sessionNumber"": 1}
 				   - 'Buổi 5 của liệu trình này' → {""sessionNumber"": 5}
+
+								📌 ⭐⭐⭐ QUAN TRỌNG: Khi query hỏi ""khoảng giá"", ""dưới"", ""trên"", ""từ X đến Y"":
+				   → PHẢI DÙNG: getServicesByPriceRange (cho dịch vụ) hoặc getProductsByPriceRange (cho sản phẩm)
+				   → PHẢI TRÍCH XUẤT giá chính xác và tính khoảng ±10%
+				   
+				   ⚠️ CRITICAL - LOGIC TÍNH KHOẢNG GIÁ:
+				   - 'khoảng X' → minPrice = X * 0.9, maxPrice = X * 1.1 (±10%)
+				   - 'từ X đến Y' → minPrice = X, maxPrice = Y (exact)
+				   - 'dưới X' → minPrice = 0, maxPrice = X
+				   - 'trên X' → minPrice = X, maxPrice = 999999999 (very large number)
+				   
+				   ⚠️ IMPORTANT - KHÔNG bao giờ để minPrice = maxPrice khi query nói ""khoảng""
+				   - ❌ SAIÏ: 'khoảng 8 triệu' → minPrice: 8000000, maxPrice: 8000000
+				   - ✅ ĐÚNG: 'khoảng 8 triệu' → minPrice: 7200000, maxPrice: 8800000
+				   
+				   Ví dụ chi tiết:
+				   - 'Dịch vụ có giá khoảng 8 triệu' → minPrice: 7200000, maxPrice: 8800000
+				   - 'Dịch vụ khoảng 5 triệu' → minPrice: 4500000, maxPrice: 5500000
+				   - 'Dịch vụ khoảng 10 triệu' → minPrice: 9000000, maxPrice: 11000000
+				   - 'Dịch vụ từ 5 triệu đến 10 triệu' → minPrice: 5000000, maxPrice: 10000000
+				   - 'Sản phẩm dưới 1 triệu' → minPrice: 0, maxPrice: 1000000
+				   - 'Dịch vụ trên 15 triệu' → minPrice: 15000000, maxPrice: 999999999
 
 				📌 ⭐⭐⭐ QUAN TRỌNG: Khi query hỏi ""Top N"", ""N sản phẩm bán chạy nhất"":
 				   → PHẢI DÙNG: getTopSellingProducts
@@ -1677,6 +1571,66 @@ namespace Aesthetics.Data.AestheticsServices.AI
                   },
                   ""reasoning"": ""Người dùng hỏi tác dụng của sản phẩm Kem Dưỡng Da → cần lấy chi tiết sản phẩm bao gồm mô tả, tác dụng, số người sử dụng, kiểm định Bộ Y tế""
                 }
+
+								📍 EXAMPLE 11 - Dịch vụ khoảng giá (±10%):
+				User: 'Dịch vụ có giá khoảng 8 triệu'
+				Response:
+				{
+				  ""tool"": ""getServicesByPriceRange"",
+				  ""params"": {
+					""minPrice"": 7200000,
+					""maxPrice"": 8800000
+				  },
+				  ""reasoning"": ""Người dùng tìm dịch vụ trong khoảng giá 8 triệu (tính ±10%: 7.2M - 8.8M)""
+				}
+
+				📍 EXAMPLE 12 - Dịch vụ khoảng 5 triệu:
+				User: 'Dịch vụ khoảng 5 triệu'
+				Response:
+				{
+				  ""tool"": ""getServicesByPriceRange"",
+				  ""params"": {
+					""minPrice"": 4500000,
+					""maxPrice"": 5500000
+				  },
+				  ""reasoning"": ""Người dùng tìm dịch vụ khoảng 5 triệu (tính ±10%: 4.5M - 5.5M)""
+				}
+
+				📍 EXAMPLE 13 - Dịch vụ từ X đến Y:
+				User: 'Dịch vụ từ 5 triệu đến 10 triệu'
+				Response:
+				{
+				  ""tool"": ""getServicesByPriceRange"",
+				  ""params"": {
+					""minPrice"": 5000000,
+					""maxPrice"": 10000000
+				  },
+				  ""reasoning"": ""Người dùng muốn tìm dịch vụ trong khoảng giá từ 5 triệu đến 10 triệu (exact range)""
+				}
+
+				📍 EXAMPLE 14 - Sản phẩm dưới giá:
+				User: 'Sản phẩm dưới 1 triệu'
+				Response:
+				{
+				  ""tool"": ""getProductsByPriceRange"",
+				  ""params"": {
+					""minPrice"": 0,
+					""maxPrice"": 1000000
+				  },
+				  ""reasoning"": ""Người dùng tìm sản phẩm có giá dưới 1 triệu đồng""
+				}
+
+				📍 EXAMPLE 15 - Dịch vụ trên giá:
+				User: 'Dịch vụ trên 15 triệu'
+				Response:
+				{
+				  ""tool"": ""getServicesByPriceRange"",
+				  ""params"": {
+					""minPrice"": 15000000,
+					""maxPrice"": 999999999
+				  },
+				  ""reasoning"": ""Người dùng tìm dịch vụ có giá trên 15 triệu đồng""
+				}
 
 				Current Date: " + DateTime.UtcNow.ToString("yyyy-MM-dd") + @"
 				Current Time: " + DateTime.UtcNow.ToString("HH:mm:ss");
@@ -2759,6 +2713,178 @@ namespace Aesthetics.Data.AestheticsServices.AI
 			}
 		}
 
+		private dynamic CheckFriendlyQuestion(string userQuery)
+		{
+			if (string.IsNullOrWhiteSpace(userQuery))
+				return null;
+
+			var lowerQuery = userQuery.ToLower().Trim();
+
+			var friendlyResponses = new Dictionary<string, string>
+			{
+				// ===== LỜI CHÀO =====
+				{ "xin chào", "👋 Xin chào bạn! Mình là trợ lý AI của phòng khám thẩm mỹ. Mình có thể giúp bạn tìm kiếm dịch vụ, đặt lịch, hoặc trò chuyện cùng bạn. Bạn cần gì nào?" },
+				{ "hello", "👋 Hello! Welcome to our aesthetic clinic. How can I help you today?" },
+				{ "hi", "👋 Hi bạn! Rất vui được gặp bạn. Mình có thể hỗ trợ bạn về các dịch vụ thẩm mỹ, đặt lịch khám, hoặc bất cứ điều gì bạn cần!" },
+				{ "chào", "👋 Chào bạn! Mình là AI Assistant. Mình sẵn sàng giúp bạn. Bạn muốn tìm hiểu về dịch vụ nào?" },
+
+				// ===== CÂUHỎI VỀ BẢN THÂN =====
+				{ "bạn là ai", "🤖 Mình là một trợ lý AI được thiết kế để hỗ trợ bạn tìm hiểu về các dịch vụ thẩm mỹ, đặt lịch khám, và trò chuyện về các vấn đề sắc đẹp." },
+				{ "bạn tên gì", "👤 Mình là AI Assistant của phòng khám. Bạn có thể gọi mình là Bác sĩ AI hoặc chỉ gọi là AI!" },
+				{ "ai đang nói chuyện với tôi", "🤖 Mình là AI Assistant - một trợ lý thông minh của phòng khám thẩm mỹ. Mình luôn sẵn sàng hỗ trợ bạn 24/7!" },
+
+				// ===== CÂUHỎI VỀ KHẢNĂNG =====
+				{ "bạn có thể làm gì", "✨ Mình có thể giúp bạn:\n• 🏥 Tìm kiếm dịch vụ thẩm mỹ\n• 👨‍⚕️ Xem danh sách các bác sĩ\n• 📅 Đặt lịch khám\n• ❌ Hủy lịch khám\n• 💄 Tư vấn sản phẩm chăm sóc\n• 💰 Xem giá dịch vụ\n• 💬 Trò chuyện với bạn về sắc đẹp" },
+				{ "mình có thể làm gì", "✨ Bạn có thể:\n• 🔍 Tìm kiếm dịch vụ\n• 📅 Đặt/Hủy lịch hẹn\n• 💳 Thanh toán và kiểm tra hóa đơn\n• 📦 Mua sản phẩm chăm sóc\n• ❓ Hỏi bất cứ điều gì về sắc đẹp" },
+				{ "bạn hỗ trợ gì", "🎯 Mình hỗ trợ:\n• Tìm dịch vụ thẩm mỹ phù hợp\n• Xem thông tin bác sĩ chuyên môn\n• Đặt lịch hẹn trực tuyến\n• Tư vấn sản phẩm & chăm sóc da\n• Quản lý lịch hẹn của bạn" },
+
+				// ===== LỜI CẢM ƠN =====
+				{ "cảm ơn", "😊 Không có gì! Mình luôn sẵn lòng giúp bạn. Nếu có bất cứ câu hỏi nào khác, đừng ngần ngại hỏi mình nhé!" },
+				{ "cảm ơn bạn", "🙌 Bạn thích rồi! Mình sẵn sàng giúp bạn bất cứ lúc nào." },
+				{ "thanks", "😊 You're welcome! Feel free to ask me anything." },
+				{ "thank you", "😊 Glad to help! Don't hesitate to ask if you need anything else." },
+				{ "tks", "😊 Vui lòng hỏi mình nếu cần thêm trợ giúp!" },
+
+				// ===== CÂUHỎI VỀ GIỜ MỞ CỬA/LIÊN HỆ =====
+				{ "mở cửa mấy giờ", "🕐 Phòng khám chúng tôi mở cửa từ 8h sáng đến 17h chiều (đóng cửa 12h-13h). Nếu cần liên hệ: 📞 0383102388" },
+				{ "giờ mở cửa", "🕐 Giờ hoạt động: 08:00 - 17:00 (Nghỉ trưa 12:00-13:00). Hotline: 0383102388" },
+				{ "contact", "📞 Liên hệ phòng khám:\n☎️ 0383102388 (24/7)\n📍 Phòng khám thẩm mỹ Aesthetics\n🕐 Mở cửa: 08:00-17:00 (Nghỉ 12:00-13:00)" },
+				{ "hotline", "📞 Hotline hỗ trợ: **0383102388** (24/7)\n📧 Email: support@aesthetics.com\n📍 Địa chỉ: Hà Nội" },
+				{ "địa chỉ", "📍 Phòng khám Aesthetics\n📌 Vị trí: Hà Nội\n☎️ Hotline: 0383102388" },
+
+				// ===== CÂUHỎI VỀ GIỜ/NGÀY =====
+				{ "bây giờ mấy giờ", $"⏰ Hiện tại là **{DateTime.Now:HH:mm}** ({DateTime.Now:dddd}, {DateTime.Now:dd/MM/yyyy})" },
+				{ "hôm nay mấy giờ", $"📅 Hôm nay là **{DateTime.Now:dddd}, ngày {DateTime.Now:dd/MM/yyyy}** - **{DateTime.Now:HH:mm}**" },
+				{ "hôm nay ngày mấy", $"📅 Hôm nay là **{DateTime.Now:dd/MM/yyyy}** ({DateTime.Now:dddd})" },
+				{ "ngày hôm nay", $"📅 Ngày **{DateTime.Now:dd/MM/yyyy}**" },
+
+				// ===== CÂUHỎI CHUNG VỀ SỨC KHỎE/SẮC ĐẸP =====
+				{ "tôi bị mụn", "💊 Mụn là vấn đề phổ biến! Phòng khám chúng tôi có dịch vụ:\n• 🎯 Trị mụn chuyên sâu\n• 💆 Chăm sóc da mặt\n• 💄 Sản phẩm trị mụn\n\nBạn muốn tư vấn hoặc đặt lịch khám?" },
+				{ "da của tôi khô", "💧 Da khô cần được cấp ẩm đúng cách!\nPhòng khám chúng tôi cung cấp:\n• 🧴 Sản phẩm dưỡng ẩm cao cấp\n• 💆 Liệu trình chăm sóc da khô\n• 👨‍⚕️ Tư vấn từ các bác sĩ\n\nBạn muốn biết thêm chi tiết?" },
+				{ "da nhạy cảm", "🛡️ Da nhạy cảm cần chăm sóc đặc biệt!\nMình có thể giới thiệu:\n• Sản phẩm an toàn cho da nhạy cảm\n• Liệu trình điều trị chuyên biệt\n• Tư vấn từ bác sĩ\n\nBạn muốn liên hệ bác sĩ?" },
+				{ "lão hóa", "✨ Lo lắng về dấu hiệu lão hóa?\nPhòng khám chúng tôi có:\n• 🎯 Liệu trình trẻ hóa da\n• 💉 Công nghệ chống lão hóa\n• 💄 Sản phẩm chống lão hóa\n\nBạn muốn tư vấn chi tiết?" },
+				{ "tàn nhang", "🌟 Tàn nhang là vấn đề thường gặp!\nChúng tôi cung cấp:\n• 🎯 Dịch vụ trị tàn nhang\n• 💆 Chăm sóc da chuyên biệt\n• 📅 Đặt lịch khám với bác sĩ\n\nBạn muốn biết thêm?" },
+				{ "mụn cơm", "🔴 Mụn cơm (blackhead) cũng có thể được trị!\nDịch vụ của chúng tôi:\n• 🧖 Làm sạch sâu lỗ chân lông\n• 💆 Chăm sóc da toàn diện\n• 💄 Sản phẩm chứa BHA/AHA\n\nBạn muốn đặt lịch?" },
+				{ "nám", "🌙 Nám da là vấn đề thường gặp ở phụ nữ!\nPhòng khám cung cấp:\n• 🎯 Liệu trình trị nám chuyên sâu\n• 💡 Công nghệ laser hiện đại\n• 💄 Sản phẩm đặc trị nám\n\nHãy liên hệ để tư vấn!" },
+				{ "mắt quầng", "😴 Mắt quầng làm bạn trông mệt mỏi?\nChúng tôi có giải pháp:\n• 👁️ Dịch vụ chăm sóc vùng mắt\n• 🧴 Serum & mặt nạ chuyên dụng\n• 💆 Massage thư giãn\n\nBạn muốn thử?" },
+				{ "mụn viêm", "🔥 Mụn viêm cần được chăm sóc cẩn thận!\nPhòng khám chúng tôi:\n• 🎯 Trị mụn viêm an toàn\n• 💊 Sử dụng công nghệ không xâm lấn\n• 💆 Không để lại sẹo\n\nĐặt lịch tư vấn ngay!" },
+
+				// ===== CÂUHỎI CHUNG =====
+				{ "ok", "👍 Tốt! Mình sẵn sàng giúp bạn. Bạn cần gì tiếp theo?" },
+				{ "được", "✅ Tuyệt vời! Bạn muốn tìm dịch vụ nào hoặc cần tư vấn gì?" },
+				{ "vâng", "👍 Dạ, mình sẵn sàng!" },
+				{ "không", "❌ Được rồi! Nếu cần hỗ trợ, hãy cho mình biết nhé!" },
+				{ "không cần", "👍 Được thôi! Nếu sau này bạn cần gì, hãy hỏi mình. Mình luôn sẵn sàng!" },
+
+				// ===== CÂUHỎI VỀ GIÁ =====
+				{ "giá dịch vụ bao nhiêu", "💰 Giá dịch vụ thay đổi tùy theo loại dịch vụ. Bạn muốn tìm hiểu dịch vụ nào cụ thể?\n• Trị mụn\n• Trẻ hóa da\n• Chăm sóc da\n\nHãy cho mình biết để tôi báo giá chi tiết!" },
+				{ "bao nhiêu tiền", "💵 Giá cả phụ thuộc vào loại dịch vụ bạn chọn. Hãy cho mình biết dịch vụ nào để mình tư vấn giá!" },
+				{ "có giảm giá", "🎁 Phòng khám chúng tôi có các chương trình khuyến mãi thường xuyên!\n💳 Đặt lịch hẹn để nhận ưu đãi đặc biệt\n☎️ Hotline: 0383102388\n\nBạn muốn biết chi tiết?" },
+				{ "có khuyến mãi", "🎉 Chúng tôi có nhiều khuyến mãi hấp dẫn!\n• 🎁 Ưu đãi cho khách hàng mới\n• 💳 Giảm giá dịch vụ\n• 🎯 Gói ưu đãi combo\n\nHãy liên hệ: 0383102388!" },
+				{ "giá bao nhiêu", "💰 Để biết giá chính xác, bạn vui lòng:\n• Cho mình biết dịch vụ cần tư vấn\n• Hoặc liên hệ hotline: 0383102388\n\nMình sẽ báo giá chi tiết cho bạn!" },
+
+				// ===== CÂUHỎI VỀ ĐẶT/HỦY LỊCH =====
+				{ "làm sao để đặt lịch", "📅 Rất dễ! Bạn có thể:\n1️⃣ Nói cho mình biết dịch vụ muốn đặt\n2️⃣ Chọn bác sĩ và thời gian\n3️⃣ Xác nhận lịch hẹn\n\nBạn muốn đặt lịch ngay bây giờ?" },
+				{ "hủy lịch", "❌ Để hủy lịch hẹn, bạn có thể:\n• Cho mình biết dịch vụ cần hủy\n• Hoặc liên hệ: 0383102388\n\nBạn muốn hủy lịch nào?" },
+				{ "đặt lịch khám", "📅 Tuyệt vời! Bạn muốn đặt lịch khám dịch vụ nào?\n• 💄 Trị mụn\n• ✨ Trẻ hóa da\n• 🧴 Chăm sóc da\n• 🎯 Dịch vụ khác\n\nHãy cho mình biết!" },
+				{ "muốn đặt lịch", "📅 Tuyệt vời! Bạn muốn đặt lịch khám dịch vụ nào?\n• 💄 Trị mụn\n• ✨ Trẻ hóa da\n• 🧴 Chăm sóc da\n\nHãy chọn dịch vụ để mình giúp bạn!" },
+				{ "đặt lịch", "📅 Để đặt lịch, bạn vui lòng:\n1️⃣ Cho mình biết dịch vụ cần đặt\n2️⃣ Chọn ngày và giờ phù hợp\n3️⃣ Chọn bác sĩ (nếu cần)\n\nBắt đầu nào!" },
+
+				// ===== CÂUHỎI VỀ SẢN PHẨM =====
+				{ "có sản phẩm nào", "📦 Phòng khám chúng tôi cung cấp sản phẩm chăm sóc da cao cấp:\n• 🧴 Nước hoa hồng & toner\n• 💧 Serum & essence\n• 🧴 Kem dưỡng\n• 🧖 Mặt nạ\n\nBạn muốn tìm hiểu sản phẩm nào?" },
+				{ "sản phẩm", "📦 Chúng tôi có nhiều sản phẩm chăm sóc da!\nBạn muốn tìm sản phẩm về:\n• 🎯 Trị mụn\n• 💧 Dưỡng ẩm\n• ✨ Chống lão hóa\n• 🌙 Chăm sóc đêm\n\nBạn cần gì?" },
+				{ "có bác sĩ nào giỏi", "👨‍⚕️ Phòng khám chúng tôi có đội ngũ bác sĩ chuyên môn cao!\nBạn muốn:\n• 📋 Xem danh sách bác sĩ\n• 👤 Tìm bác sĩ chuyên khoa nào đó\n• 📅 Đặt lịch với bác sĩ cụ thể\n\nHãy cho mình biết!" },
+
+				// ===== PHẢN HỒI TÍCH CỰC =====
+				{ "tuyệt vời", "🎉 Tuyệt vời! Mình rất vui lòng! Bạn muốn biết thêm gì nữa không?" },
+				{ "hay", "👍 Cảm ơn bạn! Mình sẽ cố gắng giúp bạn tốt nhất!" },
+				{ "tốt", "✅ Tốt! Bạn muốn tìm hiểu gì tiếp theo?" },
+				{ "quá tốt", "🌟 Cảm ơn bạn rất nhiều! Hãy liên hệ mình nếu cần thêm trợ giúp!" },
+
+				// ===== PHẢN HỒI TIÊU CỰC =====
+				{ "không tốt", "😔 Mình rất xin lỗi! Bạn có ý kiến gì để mình cải thiện? Liên hệ: 0383102388" },
+				{ "tệ", "😟 Mình xin lỗi! Vui lòng liên hệ hotline để được hỗ trợ tốt hơn: 0383102388" },
+				{ "chán", "😞 Mình hiểu! Bạn muốn tìm hiểu dịch vụ hay sản phẩm gì khác không?" },
+
+				// ===== CÂU HỎI VỀ ĐỘ TIN CẬY =====
+				{ "tin cậy", "✅ Phòng khám chúng tôi là địa chỉ uy tín!\n• 👨‍⚕️ Bác sĩ chuyên môn cao\n• 🏥 Cơ sở vật chất hiện đại\n• 😊 Khách hàng hài lòng\n\nBạn yên tâm 100%!" },
+				{ "an toàn", "🛡️ Dịch vụ của chúng tôi 100% an toàn!\n• ✓ Tiệt trùng đầy đủ\n• ✓ Dụng cụ y tế chuẩn\n• ✓ Bác sĩ có giấy phép\n\nBạn có thể yên tâm!" },
+				{ "phòng khám như thế nào", "🏥 Phòng khám chúng tôi:\n• 🌟 Hiện đại & sạch sẽ\n• 👨‍⚕️ Bác sĩ giàu kinh nghiệm\n• 😊 Dịch vụ tận tâm\n• 💰 Giá cả hợp lý\n\nHãy ghé thăm!" },
+				{ "có ai không", "👋 Có! Bạn có thể:\n• 💬 Chat với mình (AI)\n• ☎️ Gọi hotline: 0383102388\n• 👨‍⚕️ Tư vấn trực tiếp với bác sĩ\n\nChọn cách nào?" },
+				{ "bạn giúp gì được", "🎯 Mình giúp bạn:\n• 📝 Tư vấn dịch vụ\n• 📅 Đặt/Hủy lịch\n• 💰 Thông tin giá\n• ❓ Trả lời câu hỏi\n• 📱 Hướng dẫn sử dụng\n\nHỏi mình bất cứ gì!" },
+			};
+
+			// 🔥 ENHANCED MATCHING LOGIC WITH TOOL PRIORITY:
+			// 1️⃣ Check if query is about services/doctors - SKIP friendly responses
+			var toolKeywords = new[] { "bác sĩ", "doctor", "dịch vụ", "service", "liệu trình", "treatment", "buổi", "session", "appointment", "lịch", "đặt", "hủy", "giá", "price", "sản phẩm", "product", "giỏ hàng", "cart", "top", "phổ biến", "popular" };
+			if (toolKeywords.Any(kw => lowerQuery.Contains(kw)))
+			{
+				_logger.LogInformation("[SKIP_FRIENDLY] Query contains tool keywords - returning null to proceed with LLM");
+				return null; // Bỏ qua friendly responses, cho phép LLM xử lý
+			}
+
+			// 2️⃣ Exact match for true friendly questions
+			if (friendlyResponses.TryGetValue(lowerQuery, out var exactMatch))
+			{
+				_logger.LogInformation("[FRIENDLY_MATCH] Exact match: {Key}", lowerQuery);
+				return ReturnFriendlyResponse(exactMatch);
+			}
+
+			// 3️⃣ Word-based matching (whole word, not substring)
+			var words = lowerQuery.Split(new[] { ' ', '\t', '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+
+			foreach (var kvp in friendlyResponses)
+			{
+				// Kiểm tra xem query có chứa key như một từ hoàn chỉnh không
+				var keyWords = kvp.Key.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
+
+				// Nếu query chính là một word hoàn chỉnh khớp với key
+				if (words.Length == 1 && words[0] == kvp.Key)
+				{
+					_logger.LogInformation("[FRIENDLY_MATCH] Single word exact match: {Key}", kvp.Key);
+					return ReturnFriendlyResponse(kvp.Value);
+				}
+
+				// Nếu tất cả từ của key đều có trong query (word-based)
+				if (keyWords.All(keyWord => words.Any(w => w == keyWord)))
+				{
+					_logger.LogInformation("[FRIENDLY_MATCH] Word-based match: {Key}", kvp.Key);
+					return ReturnFriendlyResponse(kvp.Value);
+				}
+			}
+
+			// 4️⃣ Contains matching (last resort - chỉ khi không có match nào khác)
+			// ⚠️ TỰ ĐỘNG LOẠI BỎ những key quá ngắn (1-2 ký tự) để tránh false positive
+			foreach (var kvp in friendlyResponses.Where(x => x.Key.Length > 2))
+			{
+				if (lowerQuery.Contains(kvp.Key))
+				{
+					_logger.LogInformation("[FRIENDLY_MATCH] Contains match: {Key}", kvp.Key);
+					return ReturnFriendlyResponse(kvp.Value);
+				}
+			}
+
+			return null; // Không phải friendly question
+		}
+
+		/// <summary>
+		/// Helper method để tạo friendly response
+		/// </summary>
+		private dynamic ReturnFriendlyResponse(string message)
+		{
+			dynamic response = new System.Dynamic.ExpandoObject();
+			response.success = true;
+			response.message = message;
+			response.data = null;
+			response.toolUsed = "chatbot_friendly";
+			response.conversationUpdate = new
+			{
+				role = "assistant",
+				content = message
+			};
+
+			return response;
+		}
 		#endregion
 	}
 }

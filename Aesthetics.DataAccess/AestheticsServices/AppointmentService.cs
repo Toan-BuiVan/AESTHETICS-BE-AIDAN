@@ -1759,7 +1759,6 @@ namespace Aesthetics.Data.AestheticsServices
 
 				int newStatus = request.Status.Value;
 
-				// Validate status hợp lệ (1, 2, 3, 4)
 				var validStatuses = new[] { 1, 2, 3, 4 };
 				if (!validStatuses.Contains(newStatus))
 				{
@@ -1876,6 +1875,24 @@ namespace Aesthetics.Data.AestheticsServices
 								await _appointmentAssignmentRepository.UpdateEntity(assignment);
 								_logger.LogInformation("[SINGLE_SERVICE] ✓ Assignment updated: ID={Id}", assignment.Id);
 							}
+
+							if (newStatus == 3 && appointment.StaffId.HasValue)
+							{
+								_logger.LogInformation("[SINGLE_SERVICE] 🔥 STATUS_COMPLETED: Appointment hoàn thành - AppointmentId={AppointmentId}, StaffId={StaffId}",
+									appointment.Id, appointment.StaffId.Value);
+
+								bool performanceLogCreated = await CreatePerformanceLogAsync(appointment.Id, appointment.StaffId.Value);
+								if (performanceLogCreated)
+								{
+									_logger.LogInformation("[SINGLE_SERVICE] ✅ PerformanceLog created: AppointmentId={AppointmentId}, StaffId={StaffId}",
+										appointment.Id, appointment.StaffId.Value);
+								}
+								else
+								{
+									_logger.LogWarning("[SINGLE_SERVICE] ⚠️ Failed to create PerformanceLog: AppointmentId={AppointmentId}, StaffId={StaffId}",
+										appointment.Id, appointment.StaffId.Value);
+								}
+							}
 						}
 						else
 						{
@@ -1948,6 +1965,24 @@ namespace Aesthetics.Data.AestheticsServices
 						updatedCount++;
 						_logger.LogInformation("[TREATMENT_PLAN] ✓ Appointment updated: ID={Id}, {OldStatus} → {NewStatus}",
 							appointment.Id, GetAppointmentStatusName(oldStatus), GetAppointmentStatusName(newStatus));
+
+						if (newStatus == 3 && appointment.StaffId.HasValue)
+						{
+							_logger.LogInformation("[TREATMENT_PLAN] 🔥 STATUS_COMPLETED: Appointment hoàn thành - AppointmentId={AppointmentId}, StaffId={StaffId}",
+								appointment.Id, appointment.StaffId.Value);
+
+							bool performanceLogCreated = await CreatePerformanceLogAsync(appointment.Id, appointment.StaffId.Value);
+							if (performanceLogCreated)
+							{
+								_logger.LogInformation("[TREATMENT_PLAN] ✅ PerformanceLog created: AppointmentId={AppointmentId}, StaffId={StaffId}",
+									appointment.Id, appointment.StaffId.Value);
+							}
+							else
+							{
+								_logger.LogWarning("[TREATMENT_PLAN] ⚠️ Failed to create PerformanceLog: AppointmentId={AppointmentId}, StaffId={StaffId}",
+									appointment.Id, appointment.StaffId.Value);
+							}
+						}
 					}
 					else
 					{
@@ -2145,6 +2180,133 @@ namespace Aesthetics.Data.AestheticsServices
 				4 => "Cancelled",
 				_ => "Unknown"
 			};
+		}
+
+		/// <summary>
+		/// 🆕 Ghi nhận Performance Log khi bác sĩ hoàn thành lịch khám
+		/// - Tìm hóa đơn liên kết với lịch khám
+		/// - Tính hoa hồng từ hóa đơn đó
+		/// - Tạo PerformanceLog cho bác sĩ
+		/// </summary>
+		private async Task<bool> CreatePerformanceLogAsync(int appointmentId, int staffId)
+		{
+			try
+			{
+				_logger.LogInformation("CREATE_PERFORMANCE_LOG_START: Tạo Performance Log - AppointmentId: {AppointmentId}, StaffId: {StaffId}",
+					appointmentId, staffId);
+
+				// ✅ BƯỚC 1: Validate đầu vào
+				if (appointmentId <= 0 || staffId <= 0)
+				{
+					_logger.LogWarning("CREATE_PERFORMANCE_LOG_INVALID_PARAMS: Tham số không hợp lệ - AppointmentId: {AppointmentId}, StaffId: {StaffId}",
+						appointmentId, staffId);
+					return false;
+				}
+
+				// ✅ BƯỚC 2: Lấy thông tin lịch khám
+				var appointment = await _appointmentRepositoty.GetById(appointmentId);
+				if (appointment == null || appointment.DeleteStatus)
+				{
+					_logger.LogWarning("CREATE_PERFORMANCE_LOG_APPOINTMENT_NOT_FOUND: Lịch khám không tồn tại - AppointmentId: {AppointmentId}",
+						appointmentId);
+					return false;
+				}
+
+				// ✅ BƯỚC 3: Kiểm tra bác sĩ
+				var staff = await _staffRepository.GetById(staffId);
+				if (staff == null || staff.DeleteStatus)
+				{
+					_logger.LogWarning("CREATE_PERFORMANCE_LOG_STAFF_NOT_FOUND: Bác sĩ không tồn tại - StaffId: {StaffId}",
+						staffId);
+					return false;
+				}
+
+				// ✅ BƯỚC 4: Tìm hóa đơn liên kết (dựa trên CustomerId, ServiceId, AppointmentId)
+				var invoices = await _invoiceRepository.FindByPredicate(x =>
+					x.CustomerId == appointment.CustomerId &&
+					x.ServiceId == appointment.ServiceId &&
+					x.Status == "DaThanhToan" && 
+					!x.DeleteStatus);
+
+				if (invoices == null || invoices.Count == 0)
+				{
+					_logger.LogWarning("CREATE_PERFORMANCE_LOG_NO_INVOICE: Không tìm thấy hóa đơn thanh toán - AppointmentId: {AppointmentId}, CustomerId: {CustomerId}, ServiceId: {ServiceId}",
+						appointmentId, appointment.CustomerId, appointment.ServiceId);
+					return false;
+				}
+
+				// ✅ BƯỚC 5: Lấy hóa đơn mới nhất liên kết
+				var invoice = invoices
+					.OrderByDescending(x => x.DateCreated)
+					.FirstOrDefault();
+
+				if (invoice == null)
+				{
+					_logger.LogWarning("CREATE_PERFORMANCE_LOG_NO_VALID_INVOICE: Không tìm được hóa đơn hợp lệ - AppointmentId: {AppointmentId}",
+						appointmentId);
+					return false;
+				}
+
+				_logger.LogInformation("CREATE_PERFORMANCE_LOG_INVOICE_FOUND: Tìm thấy hóa đơn - InvoiceId: {InvoiceId}, FinalPrice: {FinalPrice:C}",
+					invoice.Id, invoice.FinalPrice);
+
+				// ✅ BƯỚC 6: Tính hoa hồng (commission)
+				decimal commissionRate = 0.10m;
+				decimal commission = (invoice.FinalPrice ?? 0) * commissionRate;
+
+				_logger.LogInformation("CREATE_PERFORMANCE_LOG_COMMISSION_CALCULATED: Tính hoa hồng - InvoiceId: {InvoiceId}, FinalPrice: {FinalPrice:C}, CommissionRate: {Rate:P}, Commission: {Commission:C}",
+					invoice.Id, invoice.FinalPrice, commissionRate, commission);
+
+				// ✅ BƯỚC 7: Kiểm tra xem Performance Log đã tồn tại chưa (tránh trùng lặp)
+				var existingLog = await _performanceLogRepository.FindByPredicate(x =>
+					x.StaffId == staffId &&
+					x.InvoiceId == invoice.Id &&
+					!x.DeleteStatus);
+
+				if (existingLog != null && existingLog.Count > 0)
+				{
+					_logger.LogWarning("CREATE_PERFORMANCE_LOG_ALREADY_EXISTS: Performance Log đã tồn tại - StaffId: {StaffId}, InvoiceId: {InvoiceId}",
+						staffId, invoice.Id);
+					return true; 
+				}
+
+				// ✅ BƯỚC 8: Tạo Performance Log entity
+				var performanceLog = new PerformanceLogEntity
+				{
+					StaffId = staffId,
+					InvoiceId = invoice.Id,
+					Commission = commission,
+					Bonus = 50000,
+					LogDate = DateTime.UtcNow,
+					Description = $"Hoa hồng từ dịch vụ {appointment.Service?.ServiceName ?? "N/A"} - Lịch khám #{appointmentId}",
+					DeleteStatus = false
+				};
+
+				_logger.LogInformation("CREATE_PERFORMANCE_LOG_ENTITY_CREATED: Tạo entity - StaffId: {StaffId}, InvoiceId: {InvoiceId}, Commission: {Commission:C}, Description: {Description}",
+					staffId, invoice.Id, commission, performanceLog.Description);
+
+				// ✅ BƯỚC 9: Lưu vào database
+				bool result = await _performanceLogRepository.CreateEntity(performanceLog);
+
+				if (result)
+				{
+					_logger.LogInformation("CREATE_PERFORMANCE_LOG_SUCCESS: ✅ Ghi nhận Performance Log thành công - StaffId: {StaffId}, InvoiceId: {InvoiceId}, Commission: {Commission:C}",
+						staffId, invoice.Id, commission);
+				}
+				else
+				{
+					_logger.LogError("CREATE_PERFORMANCE_LOG_SAVE_FAILED: Lưu Performance Log thất bại - StaffId: {StaffId}, InvoiceId: {InvoiceId}",
+						staffId, invoice.Id);
+				}
+
+				return result;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "CREATE_PERFORMANCE_LOG_EXCEPTION: Lỗi khi ghi nhận Performance Log - AppointmentId: {AppointmentId}, StaffId: {StaffId}",
+					appointmentId, staffId);
+				return false;
+			}
 		}
 	}
 }

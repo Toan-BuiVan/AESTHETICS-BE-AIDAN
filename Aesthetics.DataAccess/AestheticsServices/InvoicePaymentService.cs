@@ -25,14 +25,16 @@ namespace Aesthetics.Data.AestheticsServices
 		private readonly IStaffRepository _staffRepository;
 		private readonly ICustomerRepository _customerRepository;
 		private readonly IConfiguration _configuration;
+		private readonly IRefundServcie _refundService;
 
-        public InvoicePaymentService(
+		public InvoicePaymentService(
             ILogger<InvoicePaymentService> logger,
             IInvoiceRepository invoiceRepository,
             IInvoiceDetailsRepository invoiceDetailsRepository,
 			IStaffRepository staffRepository,
 			ICustomerRepository customerRepository,
-			IConfiguration configuration)
+			IConfiguration configuration,
+			IRefundServcie refundService)
         {
             _logger = logger;
             _invoiceRepository = invoiceRepository;
@@ -40,6 +42,7 @@ namespace Aesthetics.Data.AestheticsServices
 			_staffRepository = staffRepository;
 			_customerRepository = customerRepository;
 			_configuration = configuration;
+			_refundService = refundService;
 		}
 
 		/// <summary>
@@ -519,7 +522,6 @@ namespace Aesthetics.Data.AestheticsServices
 				}
 				else
 				{
-					// ❌ Chưa thanh toán hết → giữ nguyên OrderStatus
 					_logger.LogInformation("UPDATE_INVOICE_PAYMENT_PARTIAL: Thanh toán một phần - InvoiceId: {InvoiceId}, OutstandingBalance: {OutstandingBalance:C}, OrderStatus giữ nguyên: {OrderStatus}",
 						invoiceId, outstandingBalance, orderStatus);
 				}
@@ -544,15 +546,21 @@ namespace Aesthetics.Data.AestheticsServices
 				// ✅ UPDATE TẤT CẢ INVOICEDETAILS
 				await UpdateInvoiceDetailsStatus(invoiceId, status);
 
-				if (paidAmount > 0)
+				if (paidAmount > 0 && invoice.CustomerId.HasValue)
 				{
 					_logger.LogInformation("UPDATE_INVOICE_PAYMENT_ADD_POINTS_START: Cộng điểm thanh toán - InvoiceId: {InvoiceId}, PaidAmount: {PaidAmount:C}",
 						invoiceId, paidAmount);
 
-					// ✅ Cộng điểm mua hàng cho khách hàng
-					if (invoice.CustomerId.HasValue)
+					bool pointsAdded = await _refundService.AddRatingPointsAsync(invoice.CustomerId.Value, paidAmount);
+					if (pointsAdded)
 					{
-						await AddPurchasePointsToCustomer(invoice.CustomerId.Value, paidAmount, invoiceId);
+						_logger.LogInformation("UPDATE_INVOICE_PAYMENT_RATING_POINTS_SUCCESS: ✅ Cộng RatingPoints thành công - CustomerId: {CustomerId}, InvoiceId: {InvoiceId}, PaidAmount: {PaidAmount:C}",
+							invoice.CustomerId.Value, invoiceId, paidAmount);
+					}
+					else
+					{
+						_logger.LogWarning("UPDATE_INVOICE_PAYMENT_RATING_POINTS_FAILED: Cộng RatingPoints thất bại - CustomerId: {CustomerId}, InvoiceId: {InvoiceId}",
+							invoice.CustomerId.Value, invoiceId);
 					}
 
 					// ✅ Cộng điểm bán hàng cho nhân viên
@@ -567,56 +575,6 @@ namespace Aesthetics.Data.AestheticsServices
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "UPDATE_INVOICE_PAYMENT_EXCEPTION: Lỗi khi cập nhật thanh toán hóa đơn - InvoiceId: {InvoiceId}", invoiceId);
-				return false;
-			}
-		}
-
-
-		/// <summary>
-		/// ✅ Cộng điểm mua hàng cho khách hàng
-		/// Công thức: 1 điểm = 10000 VND
-		/// </summary>
-		private async Task<bool> AddPurchasePointsToCustomer(int customerId, decimal invoiceAmount, int invoiceId)
-		{
-			try
-			{
-				_logger.LogInformation("ADD_PURCHASE_POINTS_START: Cộng điểm mua hàng - CustomerId: {CustomerId}, Amount: {Amount:C}, InvoiceId: {InvoiceId}",
-					customerId, invoiceAmount, invoiceId);
-
-				var customer = await _customerRepository.GetById(customerId);
-				if (customer == null || customer.DeleteStatus)
-				{
-					_logger.LogWarning("ADD_PURCHASE_POINTS_CUSTOMER_NOT_FOUND: Khách hàng không tồn tại - CustomerId: {CustomerId}", customerId);
-					return false;
-				}
-
-				// ✅ Tính điểm: 1 điểm = 1000 VND (có thể điều chỉnh hệ số)
-				int pointsToAdd = (int)(invoiceAmount / 10000);
-
-				if (pointsToAdd <= 0)
-				{
-					_logger.LogInformation("ADD_PURCHASE_POINTS_NO_POINTS: Số tiền không đủ để cộng điểm - Amount: {Amount:C}, Required: 1000", invoiceAmount);
-					return true; // Không lỗi, chỉ không cộng
-				}
-
-				// ✅ Cộng điểm vào RatingPoints
-				customer.RatingPoints = (customer.RatingPoints) + pointsToAdd;
-
-				var updated = await _customerRepository.UpdateEntity(customer);
-				if (!updated)
-				{
-					_logger.LogError("ADD_PURCHASE_POINTS_FAILED: Cộng điểm thất bại - CustomerId: {CustomerId}", customerId);
-					return false;
-				}
-
-				_logger.LogInformation("ADD_PURCHASE_POINTS_SUCCESS: ✅ Cộng {Points} điểm mua hàng cho khách hàng - CustomerId: {CustomerId}, NewRatingPoints: {NewRatingPoints}, InvoiceId: {InvoiceId}",
-					pointsToAdd, customerId, customer.RatingPoints, invoiceId);
-
-				return true;
-			}
-			catch (Exception ex)
-			{
-				_logger.LogError(ex, "ADD_PURCHASE_POINTS_EXCEPTION: Lỗi khi cộng điểm mua hàng - CustomerId: {CustomerId}", customerId);
 				return false;
 			}
 		}
@@ -639,13 +597,13 @@ namespace Aesthetics.Data.AestheticsServices
 					return false;
 				}
 
-				// ✅ Tính điểm: 1 điểm = 20000 VND (có thể điều chỉnh hệ số)
-				int pointsToAdd = (int)(invoiceAmount / 20000);
+				// ✅ Tính điểm: 5 điểm = 200000 VND (có thể điều chỉnh hệ số)
+				int pointsToAdd = (int)(invoiceAmount / 200000);
 
 				if (pointsToAdd <= 0)
 				{
 					_logger.LogInformation("ADD_SALES_POINTS_NO_POINTS: Số tiền không đủ để cộng điểm - Amount: {Amount:C}, Required: 5000", invoiceAmount);
-					return true; // Không lỗi, chỉ không cộng
+					return true; 
 				}
 
 				// ✅ Cộng điểm vào SalesPoints
@@ -799,11 +757,6 @@ namespace Aesthetics.Data.AestheticsServices
 		/// <summary>
 
 		/// <summary>
-		/// ✅ HÀM MỚI: Update tiền + TransactionId từ callback payment
-		/// ⭐ Gọi UpdateInvoicePayment để xử lý logic tiền tệ, rồi update TransactionId
-		/// </summary>
-		/// 
-		/// <summary>
 		/// ✅ Xử lý thanh toán thành công với TransactionId - Update tiền, status & VNPayTransactionDate
 		/// </summary>
 		private async Task<bool> UpdateInvoicePaymentWithTransaction(int invoiceId, decimal paidAmount, string paymentMethod, string transactionId, DateTime? transactionDateTime = null)
@@ -876,12 +829,21 @@ namespace Aesthetics.Data.AestheticsServices
 				_logger.LogInformation("UPDATE_INVOICE_PAYMENT_WITH_TRANSACTION_SUCCESS: InvoiceId={InvoiceId}, NewPaid={NewPaid:C}, Outstanding={Outstanding:C}, Status={Status}, PaymentDate={PaymentDate}",
 					invoiceId, newPaidAmount, outstandingBalance, status, invoice.PaymentDate);
 
-				// ✅ Update InvoiceDetails & Add Points
+				// ✅ Update InvoiceDetails
 				await UpdateInvoiceDetailsStatus(invoiceId, status);
-				if (paidAmount > 0)
+				if (paidAmount > 0 && invoice.CustomerId.HasValue)
 				{
-					if (invoice.CustomerId.HasValue)
-						await AddPurchasePointsToCustomer(invoice.CustomerId.Value, paidAmount, invoiceId);
+					bool pointsAdded = await _refundService.AddRatingPointsAsync(invoice.CustomerId.Value, paidAmount);
+					if (pointsAdded)
+					{
+						_logger.LogInformation("UPDATE_INVOICE_PAYMENT_RATING_POINTS_SUCCESS: ✅ Cộng RatingPoints thành công - CustomerId: {CustomerId}, InvoiceId: {InvoiceId}, PaidAmount: {PaidAmount:C}",
+							invoice.CustomerId.Value, invoiceId, paidAmount);
+					}
+					else
+					{
+						_logger.LogWarning("UPDATE_INVOICE_PAYMENT_RATING_POINTS_FAILED: Cộng RatingPoints thất bại - CustomerId: {CustomerId}, InvoiceId: {InvoiceId}",
+							invoice.CustomerId.Value, invoiceId);
+					}
 					if (invoice.StaffId.HasValue)
 						await AddSalesPointsToStaff(invoice.StaffId.Value, paidAmount, invoiceId);
 				}
