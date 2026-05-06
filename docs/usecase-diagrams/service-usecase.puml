@@ -1,0 +1,61 @@
+@startuml Service UseCase
+!define DIRECTION top to bottom
+skinparam packageStyle rectangle
+skinparam backgroundColor #E1F5FE
+skinparam defaultFontColor #000000
+
+left to right direction
+
+actor Customer
+actor StaffAdmin as "Staff/Admin"
+
+rectangle System {
+  ' Customer Use Cases (Left side - Top to Bottom)
+  usecase UC1 as "Xem danh sách\ndịch vụ"
+  usecase UC2 as "Tìm kiếm\ndịch vụ"
+  usecase UC3 as "Lọc dịch vụ"
+  usecase UC4 as "Xem chi tiết\ndịch vụ"
+  usecase UC5 as "Xem giá\ndịch vụ"
+  usecase UC6 as "Đọc đánh giá"
+  usecase UC7 as "Đặt lịch hẹn"
+  usecase UC8 as "Thêm vào\ngiỏ hàng"
+  
+  ' Staff/Admin Use Cases (Right side - Top to Bottom)
+  usecase UC9 as "Tạo dịch vụ\nmới"
+  usecase UC10 as "Sửa dịch vụ"
+  usecase UC11 as "Xóa dịch vụ"
+  usecase UC12 as "Quản lý giá"
+  usecase UC13 as "Xem báo cáo"
+}
+
+' Customer connections
+Customer --> UC1
+Customer --> UC2
+Customer --> UC3
+Customer --> UC4
+Customer --> UC5
+Customer --> UC6
+Customer --> UC7
+Customer --> UC8
+
+' Staff/Admin connections
+StaffAdmin --> UC9
+StaffAdmin --> UC10
+StaffAdmin --> UC11
+StaffAdmin --> UC12
+StaffAdmin --> UC13
+
+' Include relationships for Customer side
+UC2 ..|> UC1 : <<include>>
+UC3 ..|> UC1 : <<include>>
+UC4 ..|> UC1 : <<include>>
+UC5 ..|> UC4 : <<include>>
+UC6 ..|> UC4 : <<include>>
+UC7 ..|> UC4 : <<include>>
+UC8 ..|> UC4 : <<include>>
+
+' Include relationships for Staff/Admin side
+UC10 ..|> UC9 : <<include>>
+UC12 ..|> UC10 : <<include>>
+
+@enduml
