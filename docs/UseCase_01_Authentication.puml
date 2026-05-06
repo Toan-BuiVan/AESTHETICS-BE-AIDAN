@@ -1,0 +1,35 @@
+@startuml Authentication UseCase
+!define DIRECTION top to bottom
+skinparam packageStyle rectangle
+skinparam backgroundColor #E1F5FE
+
+left to right direction
+
+actor Customer as "Khách hàng"
+actor StaffAdmin as "Nhân viên/Admin"
+
+rectangle "Module 01: Xác thực & Quản lý tài khoản" {
+  ' Customer Use Cases
+  usecase UC1 as "Đăng ký\ntài khoản"
+  usecase UC2 as "Đăng nhập"
+  usecase UC3 as "Quản lý phiên\nđăng nhập"
+  
+  ' Staff Use Cases
+  usecase UC60 as "Tạo tài khoản\nnhân viên"
+  usecase UC64 as "Quản lý quyền\ntruy cập"
+}
+
+' Customer relationships
+Customer --> UC1
+Customer --> UC2
+Customer --> UC3
+
+' Staff relationships
+StaffAdmin --> UC60
+StaffAdmin --> UC64
+
+' Include relationships
+UC2 ..|> UC1 : <<include>>
+UC3 ..|> UC2 : <<include>>
+
+@enduml
