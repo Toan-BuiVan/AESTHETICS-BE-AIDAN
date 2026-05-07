@@ -300,15 +300,6 @@ namespace Aesthetics.Entities.Models.ResponseModel
 
 		/// <summary>Tổng doanh thu từ dịch vụ</summary>
 		public decimal TotalServiceRevenue { get; set; }
-
-		/// <summary>KPI score (hoa hồng + thưởng)</summary>
-		public decimal KPIScore { get; set; }
-
-		/// <summary>Điểm đánh giá trung bình</summary>
-		public double AverageRating { get; set; }
-
-		/// <summary>Số lượt đánh giá</summary>
-		public int RatingCount { get; set; }
 	}
 
 	/// <summary>

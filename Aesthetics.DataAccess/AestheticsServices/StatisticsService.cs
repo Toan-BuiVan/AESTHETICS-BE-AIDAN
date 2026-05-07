@@ -103,17 +103,21 @@ namespace Aesthetics.Data.AestheticsServices
 		/// <summary>
 		/// Lấy voucher sử dụng nhiều nhất từ hóa đơn
 		/// </summary>
+		/// <summary>
+		/// Lấy voucher sử dụng nhiều nhất từ hóa đơn
+		/// </summary>
 		public async Task<List<VoucherUsageStatistic>> GetTopVouchersUsedAsync(DateRangeStatisticsRequest request)
 		{
 			try
 			{
-				_logger.LogInformation("GET_TOP_VOUCHERS_START: Bắt đầu lấy voucher sử dụng nhiều nhất từ Invoice");
+				_logger.LogInformation("GET_TOP_VOUCHERS_START: Bắt đầu lấy voucher sử dụng nhiều nhất từ Invoice - DateRange: {StartDate:yyyy-MM-dd} to {EndDate:yyyy-MM-dd}",
+					request.StartDate.Date, request.EndDate.Date);
 
 				// ✅ BƯỚC 1: Lấy tất cả hóa đơn trong khoảng thời gian có VoucherId
 				var invoices = await _invoiceRepository.FindByPredicate(x =>
 					x.DateCreated.HasValue &&
-					x.DateCreated.Value >= request.StartDate &&
-					x.DateCreated.Value <= request.EndDate &&
+					x.DateCreated.Value.Date >= request.StartDate.Date &&
+					x.DateCreated.Value.Date <= request.EndDate.Date &&
 					x.VoucherId.HasValue &&
 					!x.DeleteStatus);
 
@@ -122,6 +126,8 @@ namespace Aesthetics.Data.AestheticsServices
 					_logger.LogInformation("GET_TOP_VOUCHERS_NO_DATA: Không có hóa đơn sử dụng voucher trong khoảng thời gian này");
 					return new List<VoucherUsageStatistic>();
 				}
+
+				_logger.LogInformation("GET_TOP_VOUCHERS_FOUND: Tìm thấy {Count} hóa đơn có voucher", invoices.Count);
 
 				// ✅ BƯỚC 2: Nhóm theo VoucherId và tính toán
 				var voucherStats = invoices
@@ -136,7 +142,8 @@ namespace Aesthetics.Data.AestheticsServices
 					.Take(request.TopCount)
 					.ToList();
 
-				_logger.LogInformation("GET_TOP_VOUCHERS_GROUPED: Tìm thấy {Count} voucher được sử dụng", voucherStats.Count);
+				_logger.LogInformation("GET_TOP_VOUCHERS_GROUPED: Tìm thấy {Count} voucher được sử dụng (Top {TopCount})",
+					voucherStats.Count, request.TopCount);
 
 				// ✅ BƯỚC 3: Lấy thông tin chi tiết voucher từ database
 				var result = new List<VoucherUsageStatistic>();
@@ -161,6 +168,11 @@ namespace Aesthetics.Data.AestheticsServices
 							_logger.LogInformation("GET_TOP_VOUCHERS_ITEM: VoucherCode: {Code}, UsageCount: {Count}, TotalDiscount: {Discount:C}",
 								voucher.Code, stat.UsageCount, stat.TotalDiscount);
 						}
+						else
+						{
+							_logger.LogWarning("GET_TOP_VOUCHERS_ITEM_NOT_FOUND: Voucher ID {VoucherId} không tìm thấy hoặc bị xóa",
+								stat.VoucherId.Value);
+						}
 					}
 					catch (Exception ex)
 					{
@@ -178,9 +190,8 @@ namespace Aesthetics.Data.AestheticsServices
 				return new List<VoucherUsageStatistic>();
 			}
 		}
-
 		/// <summary>
-		/// Lấy bác sĩ có KPI tốt nhất (dựa trên commission + bonus) - CẬP NHẬT với hình ảnh
+		/// Lấy bác sĩ có KPI tốt nhất (dựa trên doanh thu dịch vụ)
 		/// </summary>
 		public async Task<List<DoctorKPIStatistic>> GetTopDoctorsByKPIAsync(DateRangeStatisticsRequest request)
 		{
@@ -199,13 +210,43 @@ namespace Aesthetics.Data.AestheticsServices
 					return new List<DoctorKPIStatistic>();
 				}
 
+				// ✅ Lấy tất cả hóa đơn trong khoảng thời gian để tính doanh thu
+				var invoices = await _invoiceRepository.FindByPredicate(x =>
+					x.DateCreated.HasValue &&
+					x.DateCreated.Value >= request.StartDate &&
+					x.DateCreated.Value <= request.EndDate &&
+					!x.DeleteStatus);
+
 				var doctorKPIStats = new List<DoctorKPIStatistic>();
 
 				foreach (var doctor in doctors)
 				{
 					try
 					{
-						// Lấy performance log của bác sĩ
+						_logger.LogInformation("[GET_TOP_DOCTORS_KPI] Processing DoctorId: {DoctorId}, Name: {Name}",
+							doctor.Id, doctor.FullName);
+
+						// ✅ BƯỚC 1: Lấy lịch hẹn thực tế (Appointment) của bác sĩ
+						var appointments = await _appointmentRepository.FindByPredicate(x =>
+							x.StaffId == doctor.Id &&
+							x.StartTime.HasValue &&
+						x.StartTime.Value.Date >= request.StartDate.Date &&
+						x.StartTime.Value.Date <= request.EndDate.Date &&
+							x.Status != 4 && 
+							!x.DeleteStatus);
+
+						var appointmentCount = appointments.Count();
+						_logger.LogInformation("[GET_TOP_DOCTORS_KPI] ✓ Appointments found: {Count}", appointmentCount);
+
+						// ✅ BƯỚC 2: Tính doanh thu từ invoice (filter theo StaffId và thời gian)
+						var doctorInvoices = invoices
+							.Where(i => i.StaffId == doctor.Id)
+							.ToList();
+
+						var totalServiceRevenue = doctorInvoices.Sum(i => i.FinalPrice ?? 0);
+						_logger.LogInformation("[GET_TOP_DOCTORS_KPI] ✓ TotalServiceRevenue: {Revenue:C}", totalServiceRevenue);
+
+						// ✅ BƯỚC 3: Lấy performance log để tính commission và bonus
 						var performanceLogs = await _performanceLogRepository.FindByPredicate(x =>
 							x.StaffId == doctor.Id &&
 							x.LogDate.HasValue &&
@@ -215,8 +256,10 @@ namespace Aesthetics.Data.AestheticsServices
 
 						var totalCommission = performanceLogs.Sum(p => p.Commission);
 						var totalBonus = performanceLogs.Sum(p => p.Bonus);
+						_logger.LogInformation("[GET_TOP_DOCTORS_KPI] ✓ Commission: {Commission:C}, Bonus: {Bonus:C}",
+							totalCommission, totalBonus);
 
-						// Lấy appointment assignment của bác sĩ
+						// ✅ BƯỚC 4: Lấy lịch hẹn assignment để đếm số bác sĩ phục vụ
 						var assignments = await _appointmentAssignmentRepository.FindByPredicate(x =>
 							x.StaffId == doctor.Id &&
 							x.AssignedDate.HasValue &&
@@ -224,24 +267,44 @@ namespace Aesthetics.Data.AestheticsServices
 							x.AssignedDate.Value <= request.EndDate &&
 							!x.DeleteStatus);
 
-						var appointmentCount = assignments.Count();
+						// ✅ BƯỚC 5: Lấy đánh giá theo dịch vụ mà bác sĩ thực hiện
+						// Lấy tất cả comment liên kết với appointment của bác sĩ
+                        var doctorServiceIds = assignments
+                            .Where(a => a.ServiceId.HasValue)
+                            .Select(a => a.ServiceId)
+                            .Distinct()
+                            .ToList();
 
-						// Lấy thông tin doanh thu từ invoice details nếu có liên kết
-						var serviceRevenue = assignments
-							.Where(a => a.ServiceId.HasValue)
-							.GroupBy(a => a.ServiceId)
-							.Sum(g =>
-							{
-								var service = _serviceRepository.GetById(g.Key.Value).Result;
-								return service != null ? (service.Price ?? 0) * g.Count() : 0;
-							});
+                        // Nếu không có assignment với ServiceId, thử lấy từ appointment
+                        List<int?> appointmentServiceIds = new();
+                        if (!doctorServiceIds.Any() && appointments.Any())
+                        {
+                            appointmentServiceIds = appointments
+                                .Where(a => a.ServiceId.HasValue)
+                                .Select(a => a.ServiceId)
+                                .Distinct()
+                                .ToList();
+                        }
 
-						// Lấy đánh giá từ comment
-						var comments = await _commentRepository.FindByPredicate(x =>
-							!x.DeleteStatus);
+                        var allServiceIds = doctorServiceIds.Union(appointmentServiceIds).Distinct().ToList();
 
-						// Tính KPI Score
+                        var comments = await _commentRepository.FindByPredicate(x =>
+                            x.CreationDate.HasValue &&
+                            x.CreationDate.Value >= request.StartDate &&
+                            x.CreationDate.Value <= request.EndDate &&
+                            x.ServiceId.HasValue &&
+                            (allServiceIds.Contains(x.ServiceId) || allServiceIds.Count() == 0) &&
+                            !x.DeleteStatus);
+
+                        var averageRating = comments.Any() ? comments.Average(c => c.Rating ?? 0) : 0;
+                        var ratingCount = comments.Count();
+                        _logger.LogInformation("[GET_TOP_DOCTORS_KPI] ✓ AverageRating: {Rating:F2}, RatingCount: {Count}, ServiceIds: {Services}",
+                            averageRating, ratingCount, string.Join(",", allServiceIds));
+
+						// ✅ BƯỚC 6: Tính KPI Score (ưu tiên doanh thu thực tế)
+						// KPI = TotalServiceRevenue + Commission + Bonus
 						var kpiScore = totalCommission + totalBonus;
+						_logger.LogInformation("[GET_TOP_DOCTORS_KPI] ✓ KPIScore: {Score:C}", kpiScore);
 
 						doctorKPIStats.Add(new DoctorKPIStatistic
 						{
@@ -250,32 +313,34 @@ namespace Aesthetics.Data.AestheticsServices
 							Email = doctor.Email,
 							Phone = doctor.Phone,
 							Specialization = doctor.Specialization,
-							StaffImage = doctor.StaffImage,  // ✅ Thêm hình ảnh
-							AppointmentCount = appointmentCount,
+							StaffImage = doctor.StaffImage,
+							AppointmentCount = appointmentCount,  // ✅ Lịch hẹn thực tế từ Appointment
 							TotalCommission = totalCommission,
 							TotalBonus = totalBonus,
-							TotalServiceRevenue = serviceRevenue,
-							KPIScore = kpiScore,
-							AverageRating = comments.Any() ? comments.Average(c => c.Rating ?? 0) : 0,
-							RatingCount = comments.Count()
+							TotalServiceRevenue = totalServiceRevenue,  // ✅ Doanh thu thực tế từ Invoice
 						});
 
-						_logger.LogInformation("GET_TOP_DOCTORS_KPI_ITEM: DoctorId: {DoctorId}, FullName: {FullName}, KPIScore: {KPIScore:C}",
-							doctor.Id, doctor.FullName, kpiScore);
+						_logger.LogInformation("[GET_TOP_DOCTORS_KPI] ✓ Doctor added - KPIScore: {KPIScore:C}, Appointments: {Count}",
+							kpiScore, appointmentCount);
 					}
 					catch (Exception ex)
 					{
-						_logger.LogWarning(ex, "GET_TOP_DOCTORS_KPI_ITEM_ERROR: Lỗi khi xử lý bác sĩ ID {DoctorId}",
+						_logger.LogWarning(ex, "[GET_TOP_DOCTORS_KPI] Error processing doctor ID {DoctorId}",
 							doctor.Id);
 					}
 				}
 
 				var topDoctors = doctorKPIStats
-					.OrderByDescending(x => x.KPIScore)
+					.OrderByDescending(x => x.AppointmentCount)
 					.Take(request.TopCount)
 					.ToList();
 
 				_logger.LogInformation("GET_TOP_DOCTORS_KPI_SUCCESS: Lấy {Count} bác sĩ thành công", topDoctors.Count);
+				foreach (var doc in topDoctors)
+				{
+					_logger.LogInformation("  [TOP_DOCTOR] {Name}:, Appointments={Count}, Revenue={Revenue:C}",
+						doc.FullName, doc.AppointmentCount, doc.TotalServiceRevenue);
+				}
 				return topDoctors;
 			}
 			catch (Exception ex)

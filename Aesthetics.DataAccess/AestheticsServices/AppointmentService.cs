@@ -2251,7 +2251,7 @@ namespace Aesthetics.Data.AestheticsServices
 					invoice.Id, invoice.FinalPrice);
 
 				// ✅ BƯỚC 6: Tính hoa hồng (commission)
-				decimal commissionRate = 0.10m;
+				decimal commissionRate = 0.3m;
 				decimal commission = (invoice.FinalPrice ?? 0) * commissionRate;
 
 				_logger.LogInformation("CREATE_PERFORMANCE_LOG_COMMISSION_CALCULATED: Tính hoa hồng - InvoiceId: {InvoiceId}, FinalPrice: {FinalPrice:C}, CommissionRate: {Rate:P}, Commission: {Commission:C}",
