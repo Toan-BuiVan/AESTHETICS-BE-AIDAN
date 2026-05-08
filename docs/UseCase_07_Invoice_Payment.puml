@@ -1,0 +1,86 @@
+@startuml Invoice Payment UseCase
+!define DIRECTION top to bottom
+skinparam packageStyle rectangle
+skinparam backgroundColor #FFF9C4
+
+left to right direction
+
+actor Customer as "👤 Khách hàng"
+actor StaffAdmin as "👨‍💼 Nhân viên/Admin"
+
+rectangle "Module 07: Hóa đơn & Thanh toán" {
+  
+  ' ════════════════════════════════════════════════════════════
+  ' KHÁCH HÀNG - Customer Use Cases
+  ' ════════════════════════════════════════════════════════════
+  
+  usecase UC18 as "Tạo hóa đơn
+(Invoice)"
+  usecase UC19 as "Chọn hình thức
+thanh toán"
+  usecase UC20a as "Tạo URL thanh toán
+(VNPay/Momo)"
+  usecase UC20b as "Thanh toán qua
+cổng payment"
+  usecase UC20c as "Kiểm tra kết quả
+thanh toán & Callback"
+  usecase UC20 as "Xem chi tiết
+hóa đơn"
+  usecase UC20d as "Xem lịch sử
+hóa đơn"
+  
+  ' ════════════════════════════════════════════════════════════
+  ' NHÂN VIÊN/ADMIN - Staff/Admin Use Cases
+  ' ════════════════════════════════════════════════════════════
+  
+  usecase UC68 as "Xem tất cả
+hóa đơn"
+  usecase UC68a as "Lọc & tìm kiếm
+hóa đơn"
+  usecase UC69 as "Tạo hóa đơn
+cho khách"
+  usecase UC69a as "In hóa đơn
+(PDF)"
+  usecase UC70 as "Cập nhật trạng
+thái thanh toán"
+  usecase UC71 as "Xem báo cáo doanh
+thu & thống kê"
+}
+
+' ════════════════════════════════════════════════════════════
+' CUSTOMER RELATIONSHIPS
+' ════════════════════════════════════════════════════════════
+
+Customer --> UC18
+Customer --> UC20
+Customer --> UC20d
+
+' Customer main flow
+UC18 ..|> UC19 : <<include>>
+UC19 ..|> UC20a : <<include>>
+UC20a ..|> UC20b : <<include>>
+UC20b ..|> UC20c : <<include>>
+
+' Parallel actions
+UC20c ..|> UC20 : <<parallel>>
+UC20 ..|> UC20d : <<include>>
+
+' ════════════════════════════════════════════════════════════
+' STAFF/ADMIN RELATIONSHIPS
+' ════════════════════════════════════════════════════════════
+
+StaffAdmin --> UC68
+StaffAdmin --> UC69
+StaffAdmin --> UC70
+
+' Staff management flow
+UC68 ..|> UC68a : <<include>>
+
+UC69 ..|> UC69a : <<include>>
+
+UC70 ..|> UC71 : <<include>>
+
+' Indirect: Staff can view customer invoices
+UC68a -.-> UC20 : xem chi tiết
+
+@enduml
