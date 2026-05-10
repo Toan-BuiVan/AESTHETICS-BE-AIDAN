@@ -33,6 +33,12 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>Anh danh gia</summary>
 		public string? CommentImage { get; set; }
 
+		/// <summary>FK → Doctors: bác sĩ thực hiện buổi khám</summary>
+		public int? DoctorId { get; set; }
+
+		/// <summary>FK → CustomerTreatmentSessions: buổi khám đã hoàn thành</summary>
+		public int? TreatmentSessionsId { get; set; }
+
 		// Navigation properties
 		[ForeignKey(nameof(ProductId))]
 		public virtual ProductEntity? Product { get; set; }

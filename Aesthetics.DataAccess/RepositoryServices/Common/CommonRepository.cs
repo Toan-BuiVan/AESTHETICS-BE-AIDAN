@@ -1,18 +1,19 @@
-﻿using Aesthetics.Data.RepositoryInterfaces.Common;
+﻿using Aesthetics.Data.AestheticsDbContext;
+using Aesthetics.Data.RepositoryInterfaces.Common;
+using Aesthetics.DataAccess.RepositoryServices.Common;
+using Aesthetics.Entities.BaseEntity;
+using Aesthetics.Entities.Entities;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
+using System.Data.Entity.Infrastructure;
 using System.Linq;
+using System.Linq.Expressions;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading.Tasks;
-using Aesthetics.Data.AestheticsDbContext;
-using Microsoft.EntityFrameworkCore;
-using Aesthetics.Entities.Entities;
-using System.Linq.Expressions;
-using Microsoft.EntityFrameworkCore.ChangeTracking;
-using System.Data.Entity.Infrastructure;
-using System.Runtime.CompilerServices;
-using Aesthetics.Entities.BaseEntity;
 
 namespace Aesthetics.Data.RepositoryServices.Common
 {
@@ -139,16 +140,45 @@ namespace Aesthetics.Data.RepositoryServices.Common
 		private async Task SoftDeleteAsync(EntityEntry entry, HashSet<object> visited)
 		{
 			if (entry.Entity == null || !visited.Add(entry.Entity))
-				return; 
+				return;
 
 			var entityType = entry.Entity.GetType().Name;
-			if (entry.Entity is BaseEntity baseEntity && entry.Entity is not InvoiceEntity && entry.Entity is not InvoiceDetailEntity)
+
+			// Soft delete entity hiện tại (trừ Invoice và InvoiceDetail)
+			if (entry.Entity is BaseEntity baseEntity &&
+				entry.Entity is not InvoiceEntity &&
+				entry.Entity is not InvoiceDetailEntity)
 			{
 				baseEntity.DeleteStatus = true;
 			}
 
+			// Nếu entity nằm trong NoCascadeTypes, dừng cascading
+			if (CascadeDeleteConfiguration.NoCascadeTypes.Contains(entityType))
+			{
+				return;
+			}
+
+			// Lấy danh sách child entities được phép cascading
+			var allowedChildren = CascadeDeleteConfiguration.GetAllowedChildren(entityType);
+
+			// Nếu entity không có rule cascading, dừng tại đây
+			if (allowedChildren == null || allowedChildren.Count == 0)
+			{
+				return;
+			}
+
 			foreach (var navigation in entry.Navigations)
 			{
+				var childEntityType = navigation.Metadata.TargetEntityType.Name;
+
+				// Chỉ xử lý navigations được phép cascading
+				if (!allowedChildren.Contains(childEntityType))
+					continue;
+
+				// Kiểm tra lại với hàm helper
+				if (!CascadeDeleteConfiguration.IsAllowedCascade(entityType, childEntityType))
+					continue;
+
 				await navigation.LoadAsync();
 
 				if (navigation.CurrentValue is IEnumerable<object> collection)

@@ -400,7 +400,7 @@ namespace Aesthetics.Data.AestheticsServices
 
 				// Apply pagination and project to response model
 				var pagedData = finalResults
-					.OrderBy(x => x.ProductName)
+					.OrderByDescending(x => x.Id)
 					.Skip((product.PageNo - 1) * product.PageSize)
 					.Take(product.PageSize)
 					.Select(x => new ProductListResponseModel
@@ -411,7 +411,9 @@ namespace Aesthetics.Data.AestheticsServices
 						ProductName = x.ProductName,
 						Description = x.Description,
 						SellingPrice = x.SellingPrice,
+						CostPrice = x.CostPrice,
 						Quantity = x.Quantity,
+						MinimumStock = x.MinimumStock,
 						Unit = x.Unit,
 						ProductImages = x.ProductImages
 					})

@@ -18,5 +18,7 @@ namespace Aesthetics.Entities.Models.ResponseModel
 		public int? Rating { get; set; }
 		public string? CommentImage { get; set; }
 		public DateTime? CreationDate { get; set; }
+		public int? DoctorId { get; set; }
+		public int? TreatmentSessionsId { get; set; }
 	}
 }

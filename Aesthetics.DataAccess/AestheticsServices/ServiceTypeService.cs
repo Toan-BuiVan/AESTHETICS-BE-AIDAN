@@ -101,7 +101,7 @@ namespace Aesthetics.Data.AestheticsServices
 		{
 			try
 			{
-				Expression<Func<ServiceTypeEntity, bool>> predicate = x => true;
+				Expression<Func<ServiceTypeEntity, bool>> predicate = x => !x.DeleteStatus;
 
 				if (searchServiceType.Id.HasValue)
 				{

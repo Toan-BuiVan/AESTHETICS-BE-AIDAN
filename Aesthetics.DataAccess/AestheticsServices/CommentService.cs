@@ -1,6 +1,7 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Data.AestheticsInterfaces.ICommonService;
 using Aesthetics.Data.RepositoryInterfaces;
+using Aesthetics.Data.RepositoryServices;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
@@ -21,28 +22,42 @@ namespace Aesthetics.Data.AestheticsServices
 		private readonly ICommentRepository _commentRepository;
 		private readonly ICustomerRepository _customerRepository;
 		private readonly ICommonService _commonService;
+		private readonly ITreatmentSessionRepository _treatmentSessionRepository;
 
 		public CommentService(
 			ILogger<CommentService> logger,
 			ICommentRepository commentRepository,
 			ICustomerRepository customerRepository,
-			ICommonService commonService)
+			ICommonService commonService,
+			ITreatmentSessionRepository treatmentSessionRepository)
 		{
 			_logger = logger;
 			_commentRepository = commentRepository;
 			_customerRepository = customerRepository;
 			_commonService = commonService;
+			_treatmentSessionRepository = treatmentSessionRepository;
 		}
 
 		public async Task<bool> create(RequestComment comment)
 		{
 			try
 			{
-				// Validate ProductId and ServiceId
-				if (!comment.ProductId.HasValue && !comment.ServiceId.HasValue)
+				// Validate CustomerId
+				if (comment.CustomerId <= 0)
 				{
-					_logger.LogWarning("Create Comment failed: Both ProductId and ServiceId are null");
+					_logger.LogWarning("Create Comment failed: Invalid CustomerId");
 					return false;
+				}
+
+				// If TreatmentSessionsId is provided, validate that session is completed
+				if (comment.TreatmentSessionsId.HasValue)
+				{
+					var session = await _treatmentSessionRepository.GetById(comment.TreatmentSessionsId.Value);
+					if (session == null)
+					{
+						_logger.LogWarning("Create Comment failed: CustomerTreatmentSession not found - Id: {TreatmentSessionsId}", comment.TreatmentSessionsId);
+						return false;
+					}
 				}
 
 				// Process comment image if provided
@@ -54,13 +69,15 @@ namespace Aesthetics.Data.AestheticsServices
 
 				var entity = new CommentEntity
 				{
-					ProductId = comment.ProductId,
-					ServiceId = comment.ServiceId,
+					ProductId = comment.ProductId ?? 0,
+					ServiceId = comment.ServiceId ?? 0,
 					CustomerId = comment.CustomerId,
 					CommentContent = comment.CommentContent?.Trim(),
 					Rating = comment.Rating,
 					CommentImage = processedImage,
 					CreationDate = DateTime.UtcNow,
+					DoctorId = comment.DoctorId ?? 0,
+					TreatmentSessionsId = comment.TreatmentSessionsId ?? 0,
 					DeleteStatus = false
 				};
 
@@ -71,7 +88,7 @@ namespace Aesthetics.Data.AestheticsServices
 					return false;
 				}
 
-				_logger.LogInformation("Create Comment success - CustomerId: {CustomerId}", comment.CustomerId);
+				_logger.LogInformation("Create Comment success - CustomerId: {CustomerId}, TreatmentSessionsId: {TreatmentSessionsId}", comment.CustomerId, comment.TreatmentSessionsId);
 				return true;
 			}
 			catch (Exception ex)
@@ -126,6 +143,16 @@ namespace Aesthetics.Data.AestheticsServices
 					predicate = predicate.And(x => x.ServiceId == searchComment.ServiceId.Value);
 				}
 
+				if (searchComment.DoctorId.HasValue && searchComment.DoctorId.Value > 0)
+				{
+					predicate = predicate.And(x => x.DoctorId == searchComment.DoctorId.Value);
+				}
+
+				if (searchComment.TreatmentSessionsId.HasValue && searchComment.TreatmentSessionsId.Value > 0)
+				{
+					predicate = predicate.And(x => x.TreatmentSessionsId == searchComment.TreatmentSessionsId.Value);
+				}
+
 				var allMatching = await _commentRepository.FindByPredicate(predicate);
 				var allMatchingList = allMatching.ToList();
 				var totalCount = allMatchingList.Count;
@@ -169,7 +196,9 @@ namespace Aesthetics.Data.AestheticsServices
 						CommentContent = x.CommentContent,
 						Rating = x.Rating,
 						CommentImage = x.CommentImage,
-						CreationDate = x.CreationDate
+						CreationDate = x.CreationDate,
+						DoctorId = x.DoctorId,
+						TreatmentSessionsId = x.TreatmentSessionsId
 					})
 					.ToList();
 
