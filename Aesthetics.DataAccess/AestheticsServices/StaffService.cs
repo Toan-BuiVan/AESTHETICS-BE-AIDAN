@@ -293,6 +293,13 @@ namespace Aesthetics.Data.AestheticsServices
 					staff.Degree = request.Degree;
 					updatedFields.Add("Degree");
 				}
+				if (!string.IsNullOrWhiteSpace(request.Email) && staff.Email != request.Email)
+				{
+					_logger.LogInformation("UpdateStaff: Email changed from '{OldValue}' to '{NewValue}'",
+						staff.Email, request.Email);
+					staff.Email = request.Email;
+					updatedFields.Add("Email");
+				}
 
 				if (!string.IsNullOrWhiteSpace(request.Specialization) && staff.Specialization != request.Specialization)
 				{

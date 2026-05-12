@@ -54,6 +54,9 @@ namespace Aesthetics.Entities.Models.ResponseModel
 		/// <summary>Số giờ nhắc nhở trước appointment</summary>
 		public int ReminderHoursBefore { get; set; }
 
+		/// <summary>Đã có comment cho appointment này hay chưa</summary>
+		public bool IsComment { get; set; }
+
 		/// <summary>Thông tin assignment (phòng khám)</summary>
 		public AppointmentAssignmentInfo? Assignment { get; set; }
 	}

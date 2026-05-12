@@ -23,19 +23,23 @@ namespace Aesthetics.Data.AestheticsServices
 		private readonly ICustomerRepository _customerRepository;
 		private readonly ICommonService _commonService;
 		private readonly ITreatmentSessionRepository _treatmentSessionRepository;
+		private readonly IAppointmentRepositoty _appointmentRepositoty;
+
 
 		public CommentService(
 			ILogger<CommentService> logger,
 			ICommentRepository commentRepository,
 			ICustomerRepository customerRepository,
 			ICommonService commonService,
-			ITreatmentSessionRepository treatmentSessionRepository)
+			ITreatmentSessionRepository treatmentSessionRepository,
+			IAppointmentRepositoty appointmentRepositoty)
 		{
 			_logger = logger;
 			_commentRepository = commentRepository;
 			_customerRepository = customerRepository;
 			_commonService = commonService;
 			_treatmentSessionRepository = treatmentSessionRepository;
+			_appointmentRepositoty = appointmentRepositoty;
 		}
 
 		public async Task<bool> create(RequestComment comment)
@@ -69,15 +73,15 @@ namespace Aesthetics.Data.AestheticsServices
 
 				var entity = new CommentEntity
 				{
-					ProductId = comment.ProductId ?? 0,
-					ServiceId = comment.ServiceId ?? 0,
+					ProductId = comment.ProductId ?? null,
+					ServiceId = comment.ServiceId ?? null,
 					CustomerId = comment.CustomerId,
 					CommentContent = comment.CommentContent?.Trim(),
 					Rating = comment.Rating,
 					CommentImage = processedImage,
 					CreationDate = DateTime.UtcNow,
-					DoctorId = comment.DoctorId ?? 0,
-					TreatmentSessionsId = comment.TreatmentSessionsId ?? 0,
+					DoctorId = comment.DoctorId ?? null,
+					TreatmentSessionsId = comment.TreatmentSessionsId ?? null,
 					DeleteStatus = false
 				};
 
@@ -86,6 +90,15 @@ namespace Aesthetics.Data.AestheticsServices
 				{
 					_logger.LogError("Create Comment failed at repository level");
 					return false;
+				}
+				if (comment.AppointmentId != null && comment.AppointmentId > 0)
+				{
+					var appoint = await _appointmentRepositoty.GetById(comment.AppointmentId ?? 0);
+					if (appoint != null)
+					{
+						appoint.IsComment = true;
+						await _appointmentRepositoty.UpdateEntity(appoint);
+					}
 				}
 
 				_logger.LogInformation("Create Comment success - CustomerId: {CustomerId}, TreatmentSessionsId: {TreatmentSessionsId}", comment.CustomerId, comment.TreatmentSessionsId);

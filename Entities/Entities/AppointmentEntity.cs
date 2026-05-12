@@ -52,6 +52,9 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>Thời gian trước khi gửi nhắc nhở (giờ) - mặc định 24h</summary>
 		public int ReminderHoursBefore { get; set; } = 24;
 
+		/// <summary>Cờ kiểm tra comment</summary>
+		public bool? IsComment { get; set; } = false;
+
 		// Navigation properties
 		[ForeignKey(nameof(CustomerId))]
 		public virtual CustomerEntity? Customer { get; set; }

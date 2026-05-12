@@ -76,6 +76,9 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>✅ Cờ đánh dấu hóa đơn đã giao hàng</summary>
 		public bool? IsDelivered { get; set; }
 
+		/// <summary>✅mã buổi đặt lịch</summary>
+		public int? AppointmentId { get; set; }
+
 		// ✅ Navigation properties
 		public virtual CustomerEntity? Customer { get; set; }
 		public virtual StaffEntity? Staff { get; set; }

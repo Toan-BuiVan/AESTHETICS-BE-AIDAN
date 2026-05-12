@@ -849,6 +849,102 @@ namespace Aesthetics.Data.AestheticsServices
 		}
 
 		/// <summary>
+		/// 🆕 Update Status Invoice với các logic liên kết:
+		/// - Nếu invoice status = "KhachHuy" → Update InvoiceDetail status = "KhachHuy"
+		///   và cập nhật Appointment, CustomerTreatmentPlan, CustomerTreatmentSession = "KhachHuy"
+		/// - Nếu invoice status = "ChuaThanhToan" → Update InvoiceDetail status = "ChuaThanhToan"
+		/// </summary>
+		public async Task<bool> UpdateInvoiceStatus(int invoiceId, string newStatus)
+		{
+			try
+			{
+				_logger.LogInformation("UPDATE_INVOICE_STATUS_START: Cập nhật status hóa đơn - InvoiceId: {InvoiceId}, NewStatus: {NewStatus}",
+					invoiceId, newStatus);
+
+				// ✅ STEP 1: Validate newStatus
+				var validStatuses = new[] { "ChuaThanhToan", "ThanhToanMotPhan", "DaThanhToan", "KhachHuy" };
+				if (!validStatuses.Contains(newStatus))
+				{
+					_logger.LogWarning("UPDATE_INVOICE_STATUS_INVALID_STATUS: Status không hợp lệ - InvoiceId: {InvoiceId}, Status: {Status}",
+						invoiceId, newStatus);
+					return false;
+				}
+
+				// ✅ STEP 2: Lấy hóa đơn từ database
+				var invoice = await _invoiceRepository.GetById(invoiceId);
+				if (invoice == null || invoice.DeleteStatus)
+				{
+					_logger.LogWarning("UPDATE_INVOICE_STATUS_NOT_FOUND: Hóa đơn không tồn tại - InvoiceId: {InvoiceId}",
+						invoiceId);
+					return false;
+				}
+
+				// ✅ STEP 3: Kiểm tra status hiện tại
+				string oldStatus = invoice.Status ?? "N/A";
+				if (oldStatus == newStatus)
+				{
+					_logger.LogInformation("UPDATE_INVOICE_STATUS_NO_CHANGE: Status không thay đổi - InvoiceId: {InvoiceId}, Status: {Status}",
+						invoiceId, newStatus);
+					return true; // Không cần update
+				}
+
+				// ✅ STEP 4: Cập nhật status Invoice
+				invoice.Status = newStatus;
+				var invoiceUpdated = await _invoiceRepository.UpdateEntity(invoice);
+				if (!invoiceUpdated)
+				{
+					_logger.LogError("UPDATE_INVOICE_STATUS_UPDATE_FAILED: Cập nhật hóa đơn thất bại - InvoiceId: {InvoiceId}",
+						invoiceId);
+					return false;
+				}
+
+				_logger.LogInformation("UPDATE_INVOICE_STATUS_UPDATED: Hóa đơn được cập nhật - InvoiceId: {InvoiceId}, OldStatus: {OldStatus}, NewStatus: {NewStatus}",
+					invoiceId, oldStatus, newStatus);
+
+				// ✅ STEP 5: Cập nhật InvoiceDetail
+				await UpdateInvoiceDetailsStatusByInvoiceId(invoiceId, newStatus);
+
+				// ✅ STEP 6: Nếu status = "KhachHuy" → Update Appointment, CustomerTreatmentPlan, CustomerTreatmentSession
+				if (newStatus == "KhachHuy")
+				{
+					_logger.LogInformation("UPDATE_INVOICE_STATUS_KhachHuy: Invoice bị hủy - cập nhật các entity liên kết - InvoiceId: {InvoiceId}",
+						invoiceId);
+
+					int customerId = invoice.CustomerId ?? 0;
+
+					// Cập nhật Appointment
+					await UpdateAppointmentsByCustomerId(customerId);
+
+					// 🆕 Cập nhật CHỈ CustomerTreatmentSession có TreatmentSessionId trùng với hóa đơn
+					await UpdateCustomerTreatmentSessionsByInvoiceId(invoiceId, customerId);
+				}
+				// ✅ STEP 7: Nếu status là một trong các trạng thái thanh toán → Cập nhật PaymentStatus của Appointment
+				else if (newStatus == "ChuaThanhToan" || newStatus == "ThanhToanMotPhan" || newStatus == "DaThanhToan")
+				{
+					_logger.LogInformation("UPDATE_INVOICE_STATUS_PAYMENT: Cập nhật PaymentStatus Appointment - InvoiceId: {InvoiceId}, NewStatus: {NewStatus}",
+						invoiceId, newStatus);
+
+					int customerId = invoice.CustomerId ?? 0;
+					int paymentStatus = GetPaymentStatusFromInvoiceStatus(newStatus);
+
+					// Cập nhật PaymentStatus của Appointment liên kết
+					await UpdateAppointmentPaymentStatusByInvoiceId(invoiceId, customerId, paymentStatus);
+				}
+
+				_logger.LogInformation("UPDATE_INVOICE_STATUS_SUCCESS: Cập nhật status hóa đơn thành công - InvoiceId: {InvoiceId}, NewStatus: {NewStatus}",
+					invoiceId, newStatus);
+
+				return true;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "UPDATE_INVOICE_STATUS_EXCEPTION: Lỗi khi cập nhật status hóa đơn - InvoiceId: {InvoiceId}",
+					invoiceId);
+				return false;
+			}
+		}
+
+		/// <summary>
 		/// 🆕 Lấy danh sách OrderStatus có sẵn
 		/// </summary>
 		public async Task<List<string>> GetAvailableOrderStatuses()
@@ -1065,6 +1161,40 @@ namespace Aesthetics.Data.AestheticsServices
 		#region Private Helper Methods
 
 		/// <summary>
+		/// 🆕 Lấy PaymentStatus dựa trên Invoice Status
+		/// - ChuaThanhToan → PaymentStatus = 0 (chưa thanh toán)
+		/// - ThanhToanMotPhan → PaymentStatus = 2 (thanh toán một phần)
+		/// - DaThanhToan → PaymentStatus = 1 (đã thanh toán toàn bộ)
+		/// </summary>
+		private int GetPaymentStatusFromInvoiceStatus(string invoiceStatus)
+		{
+			try
+			{
+				_logger.LogInformation("GET_PAYMENT_STATUS_FROM_INVOICE_STATUS: Chuyển đổi Invoice Status sang PaymentStatus - InvoiceStatus: {InvoiceStatus}",
+					invoiceStatus);
+
+				int paymentStatus = invoiceStatus switch
+				{
+					"ChuaThanhToan" => 0,      
+					"ThanhToanMotPhan" => 2,   
+					"DaThanhToan" => 1,       
+					_ => 0                    
+				};
+
+				_logger.LogInformation("GET_PAYMENT_STATUS_FROM_INVOICE_STATUS_RESULT: InvoiceStatus: {InvoiceStatus} → PaymentStatus: {PaymentStatus}",
+					invoiceStatus, paymentStatus);
+
+				return paymentStatus;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "GET_PAYMENT_STATUS_FROM_INVOICE_STATUS_EXCEPTION: Lỗi khi chuyển đổi status - InvoiceStatus: {InvoiceStatus}",
+					invoiceStatus);
+				return 0; 
+			}
+		}
+
+		/// <summary>
 		/// TÍNH TOÁN SỐ TIỀN GIẢM GIÁ TỪ VOUCHER
 		/// </summary>
 		private async Task<decimal> CalculateVoucherDiscountAsync(int voucherId, decimal basePrice)
@@ -1185,89 +1315,75 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-		#endregion
-
 		/// <summary>
-		/// 🆕 Update Status Invoice với các logic liên kết:
-		/// - Nếu invoice status = "KhachHuy" → Update InvoiceDetail status = "KhachHuy"
-		///   và cập nhật Appointment, CustomerTreatmentPlan, CustomerTreatmentSession = "KhachHuy"
-		/// - Nếu invoice status = "ChuaThanhToan" → Update InvoiceDetail status = "ChuaThanhToan"
+		/// 🆕 Cập nhật PaymentStatus của Appointment dựa trên Invoice
+		/// - Mỗi hóa đơn chỉ có 1 appointment liên kết
 		/// </summary>
-		public async Task<bool> UpdateInvoiceStatus(int invoiceId, string newStatus)
+		/// <summary>
+		/// 🆕 Cập nhật PaymentStatus của Appointment dựa trên Invoice
+		/// - Dùng AppointmentId trực tiếp từ Invoice
+		/// </summary>
+		private async Task UpdateAppointmentPaymentStatusByInvoiceId(int invoiceId, int customerId, int paymentStatus)
 		{
 			try
 			{
-				_logger.LogInformation("UPDATE_INVOICE_STATUS_START: Cập nhật status hóa đơn - InvoiceId: {InvoiceId}, NewStatus: {NewStatus}",
-					invoiceId, newStatus);
-
-				// ✅ STEP 1: Validate newStatus
-				var validStatuses = new[] { "ChuaThanhToan", "ThanhToanMotPhan", "DaThanhToan", "KhachHuy" };
-				if (!validStatuses.Contains(newStatus))
+				if (invoiceId <= 0 || customerId <= 0)
 				{
-					_logger.LogWarning("UPDATE_INVOICE_STATUS_INVALID_STATUS: Status không hợp lệ - InvoiceId: {InvoiceId}, Status: {Status}",
-						invoiceId, newStatus);
-					return false;
+					_logger.LogWarning("UPDATE_APPOINTMENT_PAYMENT_STATUS_INVALID_PARAMS: Tham số không hợp lệ - InvoiceId: {InvoiceId}, CustomerId: {CustomerId}",
+						invoiceId, customerId);
+					return;
 				}
 
-				// ✅ STEP 2: Lấy hóa đơn từ database
+				_logger.LogInformation("UPDATE_APPOINTMENT_PAYMENT_STATUS_START: Cập nhật PaymentStatus Appointment - InvoiceId: {InvoiceId}, PaymentStatus: {PaymentStatus}",
+					invoiceId, paymentStatus);
+
+				// ✅ STEP 1: Lấy hóa đơn
 				var invoice = await _invoiceRepository.GetById(invoiceId);
 				if (invoice == null || invoice.DeleteStatus)
 				{
-					_logger.LogWarning("UPDATE_INVOICE_STATUS_NOT_FOUND: Hóa đơn không tồn tại - InvoiceId: {InvoiceId}",
+					_logger.LogWarning("UPDATE_APPOINTMENT_PAYMENT_STATUS_INVOICE_NOT_FOUND: Hóa đơn không tồn tại - InvoiceId: {InvoiceId}",
 						invoiceId);
-					return false;
+					return;
 				}
 
-				// ✅ STEP 3: Kiểm tra status hiện tại
-				string oldStatus = invoice.Status ?? "N/A";
-				if (oldStatus == newStatus)
+				// ✅ STEP 2: Lấy AppointmentId từ hóa đơn
+				if (!invoice.AppointmentId.HasValue || invoice.AppointmentId.Value <= 0)
 				{
-					_logger.LogInformation("UPDATE_INVOICE_STATUS_NO_CHANGE: Status không thay đổi - InvoiceId: {InvoiceId}, Status: {Status}",
-						invoiceId, newStatus);
-					return true; // Không cần update
-				}
-
-				// ✅ STEP 4: Cập nhật status Invoice
-				invoice.Status = newStatus;
-				var invoiceUpdated = await _invoiceRepository.UpdateEntity(invoice);
-				if (!invoiceUpdated)
-				{
-					_logger.LogError("UPDATE_INVOICE_STATUS_UPDATE_FAILED: Cập nhật hóa đơn thất bại - InvoiceId: {InvoiceId}",
+					_logger.LogInformation("UPDATE_APPOINTMENT_PAYMENT_STATUS_NO_APPOINTMENT: Hóa đơn không liên kết với appointment - InvoiceId: {InvoiceId}",
 						invoiceId);
-					return false;
+					return;
 				}
 
-				_logger.LogInformation("UPDATE_INVOICE_STATUS_UPDATED: Hóa đơn được cập nhật - InvoiceId: {InvoiceId}, OldStatus: {OldStatus}, NewStatus: {NewStatus}",
-					invoiceId, oldStatus, newStatus);
-
-				// ✅ STEP 5: Cập nhật InvoiceDetail
-				await UpdateInvoiceDetailsStatusByInvoiceId(invoiceId, newStatus);
-
-				// ✅ STEP 6: Nếu status = "KhachHuy" → Update Appointment, CustomerTreatmentPlan, CustomerTreatmentSession
-				if (newStatus == "KhachHuy")
+				// ✅ STEP 3: Lấy appointment từ AppointmentId
+				var appointment = await _appointmentRepository.GetById(invoice.AppointmentId.Value);
+				if (appointment == null || appointment.DeleteStatus)
 				{
-					_logger.LogInformation("UPDATE_INVOICE_STATUS_KhachHuy: Invoice bị hủy - cập nhật các entity liên kết - InvoiceId: {InvoiceId}",
-						invoiceId);
-
-					int customerId = invoice.CustomerId ?? 0;
-
-					// Cập nhật Appointment
-					await UpdateAppointmentsByCustomerId(customerId);
-
-					// 🆕 Cập nhật CHỈ CustomerTreatmentSession có TreatmentSessionId trùng với hóa đơn
-					await UpdateCustomerTreatmentSessionsByInvoiceId(invoiceId, customerId);
+					_logger.LogWarning("UPDATE_APPOINTMENT_PAYMENT_STATUS_APPOINTMENT_NOT_FOUND: Appointment không tồn tại - AppointmentId: {AppointmentId}",
+						invoice.AppointmentId.Value);
+					return;
 				}
 
-				_logger.LogInformation("UPDATE_INVOICE_STATUS_SUCCESS: Cập nhật status hóa đơn thành công - InvoiceId: {InvoiceId}, NewStatus: {NewStatus}",
-					invoiceId, newStatus);
+				// ✅ STEP 4: Cập nhật PaymentStatus
+				appointment.PaymentStatus = paymentStatus;
+				var updated = await _appointmentRepository.UpdateEntity(appointment);
 
-				return true;
+				if (updated)
+				{
+					_logger.LogInformation("UPDATE_APPOINTMENT_PAYMENT_STATUS_SUCCESS: Cập nhật PaymentStatus appointment thành công - " +
+						"InvoiceId: {InvoiceId}, AppointmentId: {AppointmentId}, PaymentStatus: {PaymentStatus}",
+						invoiceId, appointment.Id, paymentStatus);
+				}
+				else
+				{
+					_logger.LogWarning("UPDATE_APPOINTMENT_PAYMENT_STATUS_FAILED: Cập nhật PaymentStatus appointment thất bại - " +
+						"InvoiceId: {InvoiceId}, AppointmentId: {AppointmentId}",
+						invoiceId, appointment.Id);
+				}
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "UPDATE_INVOICE_STATUS_EXCEPTION: Lỗi khi cập nhật status hóa đơn - InvoiceId: {InvoiceId}",
+				_logger.LogError(ex, "UPDATE_APPOINTMENT_PAYMENT_STATUS_EXCEPTION: Lỗi khi cập nhật PaymentStatus appointment - InvoiceId: {InvoiceId}",
 					invoiceId);
-				return false;
 			}
 		}
 
@@ -1738,5 +1854,7 @@ namespace Aesthetics.Data.AestheticsServices
 
 			return string.Join(", ", addressParts.Where(p => !string.IsNullOrWhiteSpace(p)));
 		}
+
+		#endregion
 	}
 }

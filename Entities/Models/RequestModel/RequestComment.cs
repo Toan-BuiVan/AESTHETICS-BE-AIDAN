@@ -17,6 +17,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public int Rating { get; set; } = 1;
 		public int? DoctorId { get; set; }
 		public int? TreatmentSessionsId { get; set; }
+		public int? AppointmentId { get; set; }
 	}
 
 	public class UpdateComment

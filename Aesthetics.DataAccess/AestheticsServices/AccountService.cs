@@ -109,11 +109,22 @@ namespace Aesthetics.Data.AestheticsServices
 							LicenseNumber = null
 						};
 						await _staffRepository.CreateEntity(staff);
-
 						/*
 						 * Thêm quyền cho nhân viên
 						 */
-						
+
+						break;
+					case AccountRole.Admin:
+						var admin = new StaffEntity
+						{
+							AccountId = account.Id,
+							SalesPoints = 0,
+							EmploymentStatus = (int)EmploymentStatus.Active,
+							DeleteStatus = false,
+							IsDoctor = request.IsDoctor ?? false,
+							LicenseNumber = null
+						};
+						await _staffRepository.CreateEntity(admin);
 						break;
 
 					default:

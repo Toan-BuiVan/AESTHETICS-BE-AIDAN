@@ -29,5 +29,6 @@ namespace Aesthetics.Data.AestheticsInterfaces
 		/// <param name="customerTreatmentSessionId">ID của CustomerTreatmentSession cần hủy</param>
 		/// <returns>True nếu hủy thành công, False nếu lỗi</returns>
 		Task<bool> UpdateAppointmentStatusAsync(updateappoint request);
+		Task<List<ServiceInfoModel>> GetDoctorServices(int doctorId);
 	}
 }

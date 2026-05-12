@@ -29,5 +29,6 @@ namespace Aesthetics.Entities.Models.RequestModel
 	{
 		public string? EquipmentName { get; set; }
 		public int? ClinicId { get; set; }
+		public int? ServiceTypeId { get; set; }
 	}
 }

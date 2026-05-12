@@ -1,4 +1,4 @@
-using Aesthetics.Data.AestheticsInterfaces;
+﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
@@ -51,6 +51,29 @@ namespace Aesthetics.Controllers
 		{
 			var result = await _appointmentService.GetDoctorAvailability(appointment);
 			return Ok(result);
+		}
+
+		[HttpGet("getdoctorservices/{doctorId}")]
+		public async Task<IActionResult> GetDoctorServices(int doctorId)
+		{
+			var result = await _appointmentService.GetDoctorServices(doctorId);
+			if (result == null || result.Count == 0)
+			{
+				return Ok(new
+				{
+					success = false,
+					message = "Bác sĩ không có dịch vụ nào hoặc không tồn tại",
+					data = new List<object>()
+				});
+			}
+
+			return Ok(new
+			{
+				success = true,
+				message = $"Tìm thấy {result.Count} dịch vụ",
+				totalServices = result.Count,
+				data = result
+			});
 		}
 	}
 }

@@ -45,7 +45,9 @@ namespace Aesthetics.Entities.Models.RequestModel
 
 		public int? StaffId { get; set; }
 
-		public string? Status { get; set; }
+		public int? Status { get; set; }
+
+		public int? ClinicId { get; set; }
 
 		public DateTime? StartDate { get; set; }
 

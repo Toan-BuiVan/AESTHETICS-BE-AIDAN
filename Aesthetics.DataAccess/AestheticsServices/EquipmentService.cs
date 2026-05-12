@@ -108,6 +108,12 @@ namespace Aesthetics.Data.AestheticsServices
 					predicate = x => x.ClinicId == clinicId;
 				}
 
+				if (searchEquipment.ServiceTypeId.HasValue)
+				{
+					var serviceTypeId = searchEquipment.ServiceTypeId.Value;
+					predicate = x => x.Clinic != null && x.Clinic.ServiceTypeId == serviceTypeId;
+				}
+
 				var allMatching = await _equipmentRepository.FindByPredicate(predicate);
 				var totalCount = allMatching.Count;
 

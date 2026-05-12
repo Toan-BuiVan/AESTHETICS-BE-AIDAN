@@ -6,6 +6,7 @@ using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Enum;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
@@ -737,6 +738,20 @@ namespace Aesthetics.Data.AestheticsServices
 				var allMatching = await _appointmentRepositoty.FindByPredicate(predicate);
 
 				// Apply date filters
+				if (appointment.ClinicId.HasValue)
+				{
+					var clinicId = appointment.ClinicId.Value;
+					_logger.LogInformation("FILTER_CLINIC_START: Filtering by ClinicId: {ClinicId}", clinicId);
+
+					var staffsInClinic = await _clinicStaffRepository.FindByPredicate(x =>
+						x.ClinicId == clinicId && !x.DeleteStatus);
+
+					var staffIds = staffsInClinic.Select(x => x.StaffId).ToList();
+					_logger.LogInformation("FILTER_CLINIC_STAFF_COUNT: Found {Count} staff members in clinic {ClinicId}", staffIds.Count, clinicId);
+
+					allMatching = allMatching.Where(x => staffIds.Contains(x.StaffId ?? 0)).ToList();
+					_logger.LogInformation("FILTER_CLINIC_COMPLETE: Filtered appointments by clinic - Total: {Count}", allMatching.Count);
+				}
 				if (appointment.StartDate.HasValue)
 				{
 					var startDate = appointment.StartDate.Value.Date;
@@ -752,13 +767,10 @@ namespace Aesthetics.Data.AestheticsServices
 				}
 
 				// Apply status filter
-				if (!string.IsNullOrEmpty(appointment.Status) && appointment.Status != "null")
+				if (appointment.Status != null)
 				{
-					if (int.TryParse(appointment.Status, out int statusCode))
-					{
-						allMatching = allMatching.Where(x => x.Status == statusCode).ToList();
-						_logger.LogInformation("FILTER_STATUS: Filtering by Status: {Status}", statusCode);
-					}
+					allMatching = allMatching.Where(x => x.Status == appointment.Status).ToList();
+					_logger.LogInformation("FILTER_STATUS: Filtering by Status: {Status}", appointment.Status);
 				}
 
 				var totalCount = allMatching.Count();
@@ -966,6 +978,114 @@ namespace Aesthetics.Data.AestheticsServices
 			{
 				_logger.LogError(ex, "GET_DOCTOR_AVAILABILITY_EXCEPTION: Exception in GetDoctorAvailability");
 				return null;
+			}
+		}
+
+		/// <summary>
+		/// Lấy danh sách dịch vụ mà bác sĩ đang làm
+		/// Logic: DoctorId → ClinicId → ServiceTypeId → Services
+		/// </summary>
+		public async Task<List<ServiceInfoModel>> GetDoctorServices(int doctorId)
+		{
+			try
+			{
+				_logger.LogInformation("GET_DOCTOR_SERVICES_START: Lấy danh sách dịch vụ cho DoctorId: {DoctorId}", doctorId);
+
+				// ✅ STEP 1: Validate input
+				if (doctorId <= 0)
+				{
+					_logger.LogWarning("GET_DOCTOR_SERVICES_INVALID_ID: DoctorId không hợp lệ: {DoctorId}", doctorId);
+					return new List<ServiceInfoModel>();
+				}
+
+				// ✅ STEP 2: Kiểm tra bác sĩ tồn tại và là bác sĩ
+				var doctor = await _staffRepository.GetById(doctorId);
+				if (doctor == null || doctor.DeleteStatus || doctor.IsDoctor != true)
+				{
+					_logger.LogWarning("GET_DOCTOR_SERVICES_DOCTOR_NOT_FOUND: Bác sĩ không tồn tại hoặc không phải bác sĩ - DoctorId: {DoctorId}", doctorId);
+					return new List<ServiceInfoModel>();
+				}
+
+				_logger.LogInformation("GET_DOCTOR_SERVICES_DOCTOR_FOUND: Bác sĩ được tìm thấy - DoctorId: {DoctorId}, DoctorName: {DoctorName}",
+					doctorId, doctor.FullName);
+
+				// ✅ STEP 3: Lấy ClinicId từ bác sĩ
+				int clinicId = await GetClinicForStaff(doctorId);
+				if (clinicId == 0)
+				{
+					_logger.LogWarning("GET_DOCTOR_SERVICES_CLINIC_NOT_FOUND: Bác sĩ không có phòng khám nào - DoctorId: {DoctorId}", doctorId);
+					return new List<ServiceInfoModel>();
+				}
+
+				_logger.LogInformation("GET_DOCTOR_SERVICES_CLINIC_FOUND: Phòng khám được tìm thấy - ClinicId: {ClinicId}", clinicId);
+
+				// ✅ STEP 4: Lấy thông tin Clinic để tìm ServiceTypeId
+				var clinic = await _clinicRepository.GetById(clinicId);
+				if (clinic == null || clinic.DeleteStatus || !clinic.ServiceTypeId.HasValue)
+				{
+					_logger.LogWarning("GET_DOCTOR_SERVICES_CLINIC_INFO_ERROR: Phòng khám không có ServiceTypeId - ClinicId: {ClinicId}", clinicId);
+					return new List<ServiceInfoModel>();
+				}
+
+				int serviceTypeId = clinic.ServiceTypeId.Value;
+				_logger.LogInformation("GET_DOCTOR_SERVICES_SERVICE_TYPE: ServiceTypeId được xác định - ServiceTypeId: {ServiceTypeId}, ClinicName: {ClinicName}",
+					serviceTypeId, clinic.ClinicName);
+
+				// ✅ STEP 5: Lấy tất cả Services theo ServiceTypeId
+				var services = await _serviceRepository.FindByPredicate(x =>
+					x.ServiceTypeId == serviceTypeId &&
+					!x.DeleteStatus);
+
+				_logger.LogInformation("GET_DOCTOR_SERVICES_FOUND: Tìm thấy {Count} dịch vụ cho ServiceTypeId: {ServiceTypeId}",
+					services.Count, serviceTypeId);
+
+				if (!services.Any())
+				{
+					_logger.LogWarning("GET_DOCTOR_SERVICES_NO_SERVICES: Không tìm thấy dịch vụ nào cho ServiceTypeId: {ServiceTypeId}", serviceTypeId);
+					return new List<ServiceInfoModel>();
+				}
+
+				// ✅ STEP 6: Lấy số lượng appointments của bác sĩ cho mỗi dịch vụ
+				var doctorAppointments = await _appointmentRepositoty.FindByPredicate(x =>
+					x.StaffId == doctorId &&
+					x.Status != (int)AppointmentStatus.Cancelled &&
+					!x.DeleteStatus);
+
+				_logger.LogInformation("GET_DOCTOR_SERVICES_APPOINTMENTS_COUNT: Tìm thấy {Count} appointments của bác sĩ",
+					doctorAppointments.Count);
+
+				// ✅ STEP 7: Chuyển đổi thành ServiceInfoModel
+				var serviceInfoModels = services
+					.Select(service =>
+					{
+						int appointmentCount = doctorAppointments.Count(x => x.ServiceId == service.Id);
+
+						return new ServiceInfoModel
+						{
+							Id = service.Id,
+							ServiceName = service.ServiceName,
+							Duration = service.Duration,
+							Price = service.Price,
+							ServiceImage = service.ServiceImage,
+							Description = service.Description,
+							ServiceTypeId = service.ServiceTypeId,
+							IsCourse = service.IsCourse,
+							AppointmentCount = appointmentCount
+						};
+					})
+					.OrderByDescending(x => x.AppointmentCount)  // Sắp xếp theo số appointments giảm dần
+					.ToList();
+
+				_logger.LogInformation("GET_DOCTOR_SERVICES_SUCCESS: Lấy danh sách dịch vụ thành công - DoctorId: {DoctorId}, ClinicId: {ClinicId}, ServiceTypeId: {ServiceTypeId}, TotalServices: {Count}",
+					doctorId, clinicId, serviceTypeId, serviceInfoModels.Count);
+
+				return serviceInfoModels;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "GET_DOCTOR_SERVICES_EXCEPTION: Lỗi khi lấy danh sách dịch vụ - DoctorId: {DoctorId}",
+					doctorId);
+				return new List<ServiceInfoModel>();
 			}
 		}
 
@@ -1412,7 +1532,8 @@ namespace Aesthetics.Data.AestheticsServices
 					Type = "DichVu",
 					OrderStatus = "DangChoXuLy",
 					PaymentMethod = appointment.PaymentMethod,
-					DeleteStatus = false
+					DeleteStatus = false,
+					AppointmentId = appointmentId
 				};
 
 				var invoiceCreated = await _invoiceRepository.CreateEntity(invoice);
@@ -1627,6 +1748,7 @@ namespace Aesthetics.Data.AestheticsServices
 					CreationDate = appointment.CreationDate,
 					IsConfirmationEmailSent = appointment.IsConfirmationEmailSent,
 					IsReminderEmailSent = appointment.IsReminderEmailSent,
+					IsComment = appointment.IsComment ?? false,
 					ReminderHoursBefore = appointment.ReminderHoursBefore,
 					Assignment = assignmentInfo != null ? await MapAssignmentInfo(assignmentInfo) : null
 				};
