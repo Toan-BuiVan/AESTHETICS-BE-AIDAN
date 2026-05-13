@@ -10,7 +10,7 @@ using Castle.Core.Configuration;
 using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.Extensions.Caching.Distributed;
-using Microsoft.Extensions.Configuration;  
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using Newtonsoft.Json;
@@ -65,32 +65,32 @@ namespace Aesthetics.Data.AestheticsServices
 			var responseData = new UserLoginResponse();
 			try
 			{
-				var user = await _authenticationRepository.login(request);
-				if (user == null)
+				var account = await _authenticationRepository.login(request);
+				if (account == null)
 				{
 					return responseData;
 				}
 
 				// Get customer info if user is a customer
 				CustomerEntity? customer = null;
-				if (user.Id > 0)
+				if (account.Id > 0)
 				{
-					var customers = await _customerRepository.FindByPredicate(x => x.AccountId == user.Id);
+					var customers = await _customerRepository.FindByPredicate(x => x.AccountId == account.Id);
 					customer = customers.FirstOrDefault();
 				}
 
 				StaffEntity? staff = null;
-				if (user.Id > 0)
+				if (account.Id > 0)
 				{
-					var staffs = await _staffRepository.FindByPredicate(x => x.AccountId == user.Id);
+					var staffs = await _staffRepository.FindByPredicate(x => x.AccountId == account.Id);
 					staff = staffs.FirstOrDefault();
 				}
 
 				var authClaims = new List<Claim>
 				{
-					new Claim(ClaimTypes.Name, user.UserName),
-					new Claim(ClaimTypes.PrimarySid, user.Id.ToString()),
-					new Claim(ClaimTypes.Role, user.Role.ToString())
+					new Claim(ClaimTypes.Name, account.UserName),
+					new Claim(ClaimTypes.PrimarySid, account.Id.ToString()),
+					new Claim(ClaimTypes.Role, account.Role.ToString())
 				};
 
 				// Add CustomerId if customer exists
@@ -106,13 +106,13 @@ namespace Aesthetics.Data.AestheticsServices
 				var newToken = await _tokenService.CreateToken(authClaims);
 				_ = int.TryParse(_configuration["JWT:RefreshTokenValidityInDays"], out int refreshTokenValidityInDays);
 				var refeshToken = await _tokenService.GenerateRefreshToken();
-				await _authenticationRepository.UpdateRefeshToken(user.Id, refeshToken, DateTime.Now.AddDays(refreshTokenValidityInDays));
+				await _authenticationRepository.UpdateRefeshToken(account.Id, refeshToken, DateTime.Now.AddDays(refreshTokenValidityInDays));
 				var DeviceName = await _tokenService.GetDeviceName();
 				var remoteIpAddress = _httpContextAccessor.HttpContext.Connection.RemoteIpAddress;
-				var cachKey = "User_" + user.Id + "_" + DeviceName;
+				var cachKey = "User_" + account.Id + "_" + DeviceName;
 				var user_Session = new AccountSessionEntity
 				{
-					AccountId = user.Id,
+					AccountId = account.Id,
 					Token = new JwtSecurityTokenHandler().WriteToken(newToken),
 					DeviceName = DeviceName,
 					IP = remoteIpAddress.ToString(),
@@ -133,7 +133,8 @@ namespace Aesthetics.Data.AestheticsServices
 				var dataCachingJson = JsonConvert.SerializeObject(sessionDataForCache);
 				var dataToCache = Encoding.UTF8.GetBytes(dataCachingJson);
 				DistributedCacheEntryOptions options = new DistributedCacheEntryOptions().SetAbsoluteExpiration(DateTime.Now.AddMinutes(5));
-				_cache.Set(cachKey, dataToCache, options);
+				await _cache.SetAsync(cachKey, dataToCache, options);
+				_logger.LogInformation($"Session cached successfully for user {account.Id} on device {DeviceName}");
 				responseData.Token = new JwtSecurityTokenHandler().WriteToken(newToken);
 				responseData.RefreshToken = refeshToken;
 				return responseData;
@@ -154,7 +155,7 @@ namespace Aesthetics.Data.AestheticsServices
 				{
 					return false;
 				}
-				
+
 				var principal = await _tokenService.GetPrincipalFromExpiredToken(request.AccessToken);
 				if (principal == null)
 				{
@@ -170,7 +171,7 @@ namespace Aesthetics.Data.AestheticsServices
 				//Lấy dữ liệu từ Redis => LogOut trên 1 thiết bị
 				var DeviceName = await _tokenService.GetDeviceName();
 				var cachKey = "User_" + user.Id + "_" + DeviceName;
-				_cache.Remove(cachKey);
+				await _cache.RemoveAsync(cachKey);
 				await _authenticationRepository.DeleteAccountSession(request.AccessToken, user.Id);
 				return true;
 
