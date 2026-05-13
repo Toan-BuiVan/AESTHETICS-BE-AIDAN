@@ -18,7 +18,7 @@ namespace Aesthetics.Controllers
 			_staffService = staffService;
 		}
 
-		[HttpPost("get-list")]
+		[HttpPost("getliststaff")]
 		public async Task<IActionResult> GetList([FromBody] RequestStaffSearch searchRequest)
 		{
 			if (searchRequest == null)

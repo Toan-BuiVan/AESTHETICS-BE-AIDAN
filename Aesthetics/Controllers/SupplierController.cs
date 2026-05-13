@@ -20,25 +20,25 @@ namespace Aesthetics.Controllers
 			_supplierSevice = supplierSevice;
 		}
 
-		[HttpPost("create")]
+		[HttpPost("createsupplier")]
 		public async Task<bool> create(RequestSupplier supplier)
 		{
 			return await _supplierSevice.create(supplier);
 		}
 
-		[HttpPost("update")]
+		[HttpPost("updatesupplier")]
 		public async Task<bool> update(SupplierUpdate supplier)
 		{
 			return await _supplierSevice.update(supplier);
 		}
 
-		[HttpPost("delete")]
+		[HttpPost("deletesupplier")]
 		public async Task<bool> detele(SupplierDelete supplier)
 		{
 			return await _supplierSevice.delete(supplier);
 		}
 
-		[HttpPost("paging")]
+		[HttpPost("pagingsupplier")]
 		public async Task<BaseDataCollection<SupplierEntity>> paging(SupplierGet supplier)
 		{
 			return await _supplierSevice.getlist(supplier);

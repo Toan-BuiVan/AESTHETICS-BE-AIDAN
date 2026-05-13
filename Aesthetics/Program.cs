@@ -19,6 +19,8 @@ using ASP_NetCore_Aesthetics.Services.VnPaySevices;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using OfficeOpenXml;
+using Microsoft.Extensions.Caching.StackExchangeRedis;
+
 
 var builder = WebApplication.CreateBuilder(args);
 var configuration = builder.Configuration;
@@ -153,6 +155,28 @@ builder.Services.AddScoped<IPasswordHasher<object>, PasswordHasher<object>>();
 builder.Services.AddMemoryCache();
 builder.Services.AddLogging();
 
+// ===== REDIS DISTRIBUTED CACHE =====
+var redisConnectionString = configuration["RedisCacheUrl"];
+if (!string.IsNullOrEmpty(redisConnectionString))
+{
+	try
+	{
+		builder.Services.AddStackExchangeRedisCache(options =>
+		{
+			options.Configuration = redisConnectionString;
+			options.InstanceName = "Aesthetics_";
+		});
+	}
+	catch (Exception ex)
+	{
+		builder.Services.AddDistributedMemoryCache();
+	}
+}
+else
+{
+	builder.Services.AddDistributedMemoryCache();
+}
+
 // If you need authentication/authorization - moved BEFORE builder.Build()
 //builder.Services.AddAuthentication("Bearer")
 //	.AddJwtBearer("Bearer", options =>
@@ -176,6 +200,12 @@ app.UseHttpsRedirection();
 app.UseStaticFiles();
 
 app.UseRouting();
+
+app.UseCors(builder => builder
+	.AllowAnyOrigin()
+	.AllowAnyMethod()
+	.AllowAnyHeader()
+	.WithExposedHeaders("New-AccessToken", "New-RefreshToken"));
 
 app.UseAuthentication();
 

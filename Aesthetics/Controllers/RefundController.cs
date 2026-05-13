@@ -26,7 +26,7 @@ namespace Aesthetics.Controllers
         /// ✅ Tạo yêu cầu hoàn tiền mới
         /// POST: api/refund/create
         /// </summary>
-        [HttpPost("create")]
+        [HttpPost("createrefund")]
         public async Task<IActionResult> CreateRefund([FromBody] CreateRefundModel request)
         {
             try
@@ -78,7 +78,7 @@ namespace Aesthetics.Controllers
         /// <summary>
         /// ✅ Cập nhật trạng thái hoàn tiền
         /// </summary>
-        [HttpPost("update-status")]
+        [HttpPost("updatestatusrefund")]
         public async Task<IActionResult> UpdateRefundStatus([FromBody] UpdtaeRefundModel request)
         {
             try
@@ -130,7 +130,7 @@ namespace Aesthetics.Controllers
         /// <summary>
         /// ✅ Lấy danh sách yêu cầu hoàn tiền với filter và phân trang
         /// </summary>
-        [HttpPost("get-list")]
+        [HttpPost("getlistrefund")]
         public async Task<IActionResult> GetRefundList([FromBody] getlist request)
         {
             try

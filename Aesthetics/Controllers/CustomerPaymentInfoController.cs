@@ -27,7 +27,7 @@ namespace Aesthetics.Controllers
         /// ✅ Tạo thông tin thanh toán mới cho khách hàng
         /// POST: api/customerpaymentinfo/create
         /// </summary>
-        [HttpPost("create")]
+        [HttpPost("createcustomerpayment")]
         public async Task<IActionResult> CreatePaymentInfo([FromBody] CreateCustomerPaymentModel request)
         {
             try
@@ -81,7 +81,7 @@ namespace Aesthetics.Controllers
         /// ✅ Cập nhật thông tin thanh toán
         /// PUT: api/customerpaymentinfo/update
         /// </summary>
-        [HttpPost("update")]
+        [HttpPost("updatecustomerpayment")]
         public async Task<IActionResult> UpdatePaymentInfo([FromBody] updatecustomerpayment request)
         {
             try
@@ -135,7 +135,7 @@ namespace Aesthetics.Controllers
         /// ✅ Xóa thông tin thanh toán
         /// DELETE: api/customerpaymentinfo/delete
         /// </summary>
-        [HttpPost("delete")]
+        [HttpPost("deletecustomerpayment")]
         public async Task<IActionResult> DeletePaymentInfo([FromBody] deletecustomerpayment request)
         {
             try
@@ -188,7 +188,7 @@ namespace Aesthetics.Controllers
         /// ✅ Lấy danh sách thông tin thanh toán của khách hàng
         /// POST: api/customerpaymentinfo/get-list
         /// </summary>
-        [HttpPost("get-list")]
+        [HttpPost("getlistcustomerpayment")]
         public async Task<IActionResult> GetPaymentInfoList([FromBody] getlistcustomerpayment request)
         {
             try
