@@ -1,6 +1,8 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces.GHN;
 using Aesthetics.Data.RepositoryInterfaces;
 using Aesthetics.Data.RepositoryServices;
+using Aesthetics.Entities.Entities;
+using Aesthetics.Entities.Models.RequestModel;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 using System.Collections.Generic;
@@ -562,6 +564,21 @@ namespace Aesthetics.Data.AestheticsServices.GHN
 
 						var createOrderJsonContent = await createOrderResponse.Content.ReadAsStringAsync();
 						var createOrderResult = JsonDocument.Parse(createOrderJsonContent);
+						string? ghnOrderCode = null;
+						if (createOrderResult.RootElement.TryGetProperty("data", out var responseData) &&
+							responseData.ValueKind == System.Text.Json.JsonValueKind.Object &&
+							responseData.TryGetProperty("order_code", out var orderCodeElement))
+						{
+							ghnOrderCode = orderCodeElement.GetString();
+							_logger.LogInformation("CREATE_SHIPPING_ORDER_GHN_ORDER_CODE: Nhận OrderCode từ GHN - InvoiceId: {InvoiceId}, OrderCode: {OrderCode}",
+								invoiceId, ghnOrderCode);
+						}
+						if (!string.IsNullOrWhiteSpace(ghnOrderCode))
+						{
+							invoice.OrderCode = ghnOrderCode;
+							_logger.LogInformation("CREATE_SHIPPING_ORDER_SAVE_ORDER_CODE: Lưu GHN OrderCode - InvoiceId: {InvoiceId}, OrderCode: {OrderCode}",
+								invoiceId, ghnOrderCode);
+						}
 						invoice.IsDelivered = true;
 						var updateInvoiceResult = await _invoiceRepository.UpdateEntity(invoice);
 
@@ -572,6 +589,8 @@ namespace Aesthetics.Data.AestheticsServices.GHN
 							shippingOrderResponse = createOrderResult,
 							message = $"Tạo đơn hàng vận chuyển thành công cho hóa đơn {invoiceId}"
 						});
+
+						_logger.LogInformation($"Successfully created shipping order for invoice {invoiceId}");
 
 						_logger.LogInformation($"Successfully created shipping order for invoice {invoiceId}");
 					}
@@ -601,6 +620,318 @@ namespace Aesthetics.Data.AestheticsServices.GHN
 			{
 				_logger.LogError($"Error in CreateShippingOrdersAsync: {ex.Message}");
 				throw;
+			}
+		}
+
+		public async Task<JsonDocument> ReturnShippingOrdersAsync(ReturnShippingOrderRequest request, int shopId = 6387655)
+		{
+			try
+			{
+				if (request == null || request.InvoiceIds == null || request.InvoiceIds.Count == 0)
+				{
+					_logger.LogWarning("RETURN_SHIPPING_INVALID: Không có Invoice ID để hoàn");
+					throw new InvalidOperationException("Vui lòng cung cấp ít nhất một hóa đơn để hoàn");
+				}
+
+				var returnedOrders = new List<object>();
+
+				foreach (var invoiceId in request.InvoiceIds)
+				{
+					try
+					{
+						_logger.LogInformation("RETURN_SHIPPING_START: Bắt đầu hoàn hàng - InvoiceId: {InvoiceId}", invoiceId);
+
+						// ✅ STEP 1: Lấy thông tin hóa đơn
+						var invoice = await _invoiceRepository.GetById(invoiceId);
+						if (invoice == null || invoice.DeleteStatus)
+						{
+							_logger.LogWarning("RETURN_SHIPPING_INVOICE_NOT_FOUND: Hóa đơn không tồn tại - InvoiceId: {InvoiceId}",
+								invoiceId);
+							returnedOrders.Add(new
+							{
+								invoiceId = invoiceId,
+								success = false,
+								error = $"Không tìm thấy hóa đơn với ID {invoiceId}"
+							});
+							continue;
+						}
+
+						// ✅ STEP 2: Kiểm tra IsDelivered
+						if (invoice.IsDelivered != true)
+						{
+							_logger.LogWarning("RETURN_SHIPPING_NOT_DELIVERED: Hóa đơn chưa được giao - InvoiceId: {InvoiceId}, IsDelivered: {IsDelivered}",
+								invoiceId, invoice.IsDelivered);
+							returnedOrders.Add(new
+							{
+								invoiceId = invoiceId,
+								success = false,
+								error = "Hóa đơn chưa được giao hoặc không hợp lệ để hoàn"
+							});
+							continue;
+						}
+
+						// ✅ STEP 3: Trích xuất OrderCode từ TransactionId hoặc ShipToAddress
+						var orderCode = ExtractOrderCodeFromInvoice(invoice);
+						if (string.IsNullOrWhiteSpace(orderCode))
+						{
+							_logger.LogWarning("RETURN_SHIPPING_NO_ORDER_CODE: Không tìm thấy mã đơn hàng - InvoiceId: {InvoiceId}",
+								invoiceId);
+							returnedOrders.Add(new
+							{
+								invoiceId = invoiceId,
+								success = false,
+								error = "Không tìm thấy mã đơn hàng GHN cho hóa đơn này"
+							});
+							continue;
+						}
+
+						_logger.LogInformation("RETURN_SHIPPING_ORDER_CODE_FOUND: Tìm thấy mã đơn hàng - InvoiceId: {InvoiceId}, OrderCode: {OrderCode}",
+							invoiceId, orderCode);
+
+						// ✅ 🆕 STEP 3.5: KIỂM TRA TRẠNG THÁI HIỆN TẠI TRÊN GHN TRƯỚC KHI HOÀN
+						var currentGHNStatus = await GetCurrentOrderStatusAsync(orderCode);
+						_logger.LogInformation("RETURN_SHIPPING_CURRENT_STATUS_CHECK: Trạng thái hiện tại trên GHN - InvoiceId: {InvoiceId}, CurrentStatus: {CurrentStatus}",
+							invoiceId, currentGHNStatus ?? "null");
+
+						// ✅ 🆕 Danh sách trạng thái có thể hoàn
+						var returnableStatuses = new[] {
+							"delivered",  // Đã giao - có thể hoàn
+							"delivery_fail",  // Giao thất bại - có thể hoàn
+							"waiting_to_return"  // Chờ tái giao - có thể hoàn
+						};
+
+						if (string.IsNullOrWhiteSpace(currentGHNStatus) || !returnableStatuses.Contains(currentGHNStatus.ToLower()))
+						{
+							_logger.LogWarning("RETURN_SHIPPING_INVALID_STATUS: Trạng thái không hợp lệ để hoàn - InvoiceId: {InvoiceId}, CurrentStatus: {CurrentStatus}",
+								invoiceId, currentGHNStatus ?? "null");
+							returnedOrders.Add(new
+							{
+								invoiceId = invoiceId,
+								orderCode = orderCode,
+								success = false,
+								currentStatus = currentGHNStatus,
+								error = $"Đơn hàng ở trạng thái '{currentGHNStatus}' - không thể hoàn (chỉ có thể hoàn ở trạng thái: delivered, delivery_fail, waiting_to_return)"
+							});
+							continue;
+						}
+
+						// ✅ STEP 4: Gọi GHN API để hoàn hàng (sử dụng endpoint đúng: /v2/switch-status/return)
+						var returnUrl = $"{_ghnApiUrl}/v2/switch-status/return";
+						var returnHttpRequest = new HttpRequestMessage(HttpMethod.Post, returnUrl);
+						returnHttpRequest.Headers.Add("token", _ghnToken);
+						returnHttpRequest.Headers.Add("shop_id", shopId.ToString());
+
+						// ✅ Request body chỉ cần order_codes (theo GHN docs)
+						var returnPayload = new
+						{
+							order_codes = new[] { orderCode }
+						};
+
+						var returnJsonPayload = JsonSerializer.Serialize(returnPayload);
+						_logger.LogInformation("RETURN_SHIPPING_PAYLOAD: InvoiceId={InvoiceId}, OrderCode={OrderCode}, Payload={Payload}",
+							invoiceId, orderCode, returnJsonPayload);
+
+						returnHttpRequest.Content = new StringContent(returnJsonPayload, System.Text.Encoding.UTF8, "application/json");
+
+						var returnResponse = await _httpClient.SendAsync(returnHttpRequest);
+
+						if (!returnResponse.IsSuccessStatusCode)
+						{
+							var errorContent = await returnResponse.Content.ReadAsStringAsync();
+							_logger.LogError("RETURN_SHIPPING_API_ERROR: Lỗi từ GHN API - InvoiceId: {InvoiceId}, OrderCode: {OrderCode}, StatusCode: {StatusCode}, Error: {Error}",
+								invoiceId, orderCode, returnResponse.StatusCode, errorContent);
+
+							returnedOrders.Add(new
+							{
+								invoiceId = invoiceId,
+								orderCode = orderCode,
+								currentStatus = currentGHNStatus,
+								success = false,
+								error = $"Lỗi API GHN: {returnResponse.StatusCode}",
+								details = errorContent
+							});
+							continue;
+						}
+
+						var returnJsonContent = await returnResponse.Content.ReadAsStringAsync();
+						var returnResult = JsonDocument.Parse(returnJsonContent);
+
+						_logger.LogInformation("RETURN_SHIPPING_GHN_SUCCESS: Hoàn hàng thành công trên GHN - InvoiceId: {InvoiceId}, OrderCode: {OrderCode}",
+							invoiceId, orderCode);
+
+						// ✅ STEP 5: Cập nhật IsDelivered = false
+						invoice.IsDelivered = false;
+						var updateResult = await _invoiceRepository.UpdateEntity(invoice);
+
+						if (updateResult)
+						{
+							_logger.LogInformation("RETURN_SHIPPING_INVOICE_UPDATED: Cập nhật IsDelivered=false - InvoiceId: {InvoiceId}",
+								invoiceId);
+						}
+						else
+						{
+							_logger.LogWarning("RETURN_SHIPPING_INVOICE_UPDATE_FAILED: Không thể cập nhật IsDelivered - InvoiceId: {InvoiceId}",
+								invoiceId);
+						}
+
+						returnedOrders.Add(new
+						{
+							invoiceId = invoiceId,
+							orderCode = orderCode,
+							currentStatus = currentGHNStatus,
+							success = true,
+							returnResponse = returnResult,
+							message = $"Hoàn hàng thành công cho hóa đơn {invoiceId}"
+						});
+
+						_logger.LogInformation("RETURN_SHIPPING_SUCCESS: Hoàn hàng hoàn tất - InvoiceId: {InvoiceId}, OrderCode: {OrderCode}",
+							invoiceId, orderCode);
+					}
+					catch (Exception ex)
+					{
+						_logger.LogError("RETURN_SHIPPING_ERROR: Lỗi khi hoàn hàng - InvoiceId: {InvoiceId}, Error: {Error}",
+							invoiceId, ex.Message);
+
+						returnedOrders.Add(new
+						{
+							invoiceId = invoiceId,
+							success = false,
+							error = ex.Message
+						});
+					}
+				}
+
+				var finalResult = JsonDocument.Parse(JsonSerializer.Serialize(new
+				{
+					code = 200,
+					message = "Success",
+					data = returnedOrders,
+					totalCount = returnedOrders.Count,
+					successCount = returnedOrders.Count(o => (bool)((dynamic)o).success),
+					failureCount = returnedOrders.Count - returnedOrders.Count(o => (bool)((dynamic)o).success)
+				}));
+
+				_logger.LogInformation("RETURN_SHIPPING_COMPLETED: Hoàn hàng hoàn tất - TotalCount: {Total}, SuccessCount: {Success}, FailureCount: {Failure}",
+					returnedOrders.Count,
+					returnedOrders.Count(o => (bool)((dynamic)o).success),
+					returnedOrders.Count - returnedOrders.Count(o => (bool)((dynamic)o).success));
+
+				return finalResult;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError("RETURN_SHIPPING_FATAL: Lỗi toàn cục khi hoàn hàng - Error: {Error}", ex.Message);
+				throw;
+			}
+		}
+
+		/// <summary>
+		/// 🔍 Lấy trạng thái hiện tại của đơn hàng từ GHN
+		/// </summary>
+		private async Task<string?> GetCurrentOrderStatusAsync(string orderCode)
+		{
+			try
+			{
+				var url = $"{_ghnApiUrl}/v2/shipping-order/detail";
+				var request = new HttpRequestMessage(HttpMethod.Post, url);
+				request.Headers.Add("token", _ghnToken);
+
+				var payload = new { order_code = orderCode };
+				var jsonPayload = JsonSerializer.Serialize(payload);
+				request.Content = new StringContent(jsonPayload, System.Text.Encoding.UTF8, "application/json");
+
+				var response = await _httpClient.SendAsync(request);
+
+				if (!response.IsSuccessStatusCode)
+				{
+					_logger.LogWarning("GET_CURRENT_STATUS_API_ERROR: Lỗi từ GHN API - OrderCode: {OrderCode}, StatusCode: {StatusCode}",
+						orderCode, response.StatusCode);
+					return null;
+				}
+
+				var jsonContent = await response.Content.ReadAsStringAsync();
+				var result = JsonDocument.Parse(jsonContent);
+
+				if (result.RootElement.TryGetProperty("data", out var dataElement) &&
+					dataElement.TryGetProperty("status", out var statusElement))
+				{
+					var status = statusElement.GetString();
+					_logger.LogInformation("GET_CURRENT_STATUS_SUCCESS: Lấy trạng thái thành công - OrderCode: {OrderCode}, Status: {Status}",
+						orderCode, status);
+					return status;
+				}
+
+				_logger.LogWarning("GET_CURRENT_STATUS_PARSE_ERROR: Không thể phân tích response - OrderCode: {OrderCode}",
+					orderCode);
+				return null;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "GET_CURRENT_STATUS_EXCEPTION: Lỗi khi lấy trạng thái - OrderCode: {OrderCode}, Error: {Error}",
+					orderCode, ex.Message);
+				return null;
+			}
+		}
+
+
+
+		/// <summary>
+		/// Helper: Trích xuất OrderCode từ Invoice
+		/// Tìm kiếm trong ShipToAddress hoặc TransactionId
+		/// Fallback: tạo từ InvoiceId
+		/// </summary>
+		private string? ExtractOrderCodeFromInvoice(InvoiceEntity invoice)
+		{
+			try
+			{
+				// ✅ Cách 1: Ưu tiên cao nhất - Lấy từ OrderCode (lưu trữ order code thực từ GHN)
+				if (!string.IsNullOrWhiteSpace(invoice.OrderCode))
+				{
+					_logger.LogInformation("EXTRACT_ORDER_CODE_FROM_ORDER_CODE: Trích xuất từ OrderCode - OrderCode: {OrderCode}",
+						invoice.OrderCode);
+					return invoice.OrderCode;
+				}
+
+
+				// ✅ Không tìm thấy - log warning
+				_logger.LogWarning("EXTRACT_ORDER_CODE_NOT_FOUND: Không tìm thấy OrderCode - InvoiceId: {InvoiceId}",
+					invoice.Id);
+				return null;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError("EXTRACT_ORDER_CODE_EXCEPTION: Lỗi khi trích xuất OrderCode - InvoiceId: {InvoiceId}, Error: {Error}",
+					invoice.Id, ex.Message);
+				return null;
+			}
+		}
+		/// <summary>
+		/// Helper: Trích xuất InvoiceId từ OrderCode (định dạng: "INV-{invoiceId}-{timestamp}")
+		/// </summary>
+		private int? ExtractInvoiceIdFromOrderCode(string orderCode)
+		{
+			try
+			{
+				if (string.IsNullOrWhiteSpace(orderCode))
+					return null;
+
+				// Định dạng: "INV-{invoiceId}-{timestamp}"
+				var parts = orderCode.Split('-');
+				if (parts.Length >= 2 && parts[0] == "INV" && int.TryParse(parts[1], out int invoiceId))
+				{
+					_logger.LogInformation("EXTRACT_INVOICE_ID_SUCCESS: Trích xuất InvoiceId từ OrderCode - OrderCode: {OrderCode}, InvoiceId: {InvoiceId}",
+						orderCode, invoiceId);
+					return invoiceId;
+				}
+
+				_logger.LogWarning("EXTRACT_INVOICE_ID_FAILED: Không thể trích xuất InvoiceId từ OrderCode - OrderCode: {OrderCode}", orderCode);
+				return null;
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError("EXTRACT_INVOICE_ID_EXCEPTION: Lỗi khi trích xuất InvoiceId - OrderCode: {OrderCode}, Error: {Error}",
+					orderCode, ex.Message);
+				return null;
 			}
 		}
 

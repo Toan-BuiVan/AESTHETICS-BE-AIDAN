@@ -38,7 +38,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Folder Include="AestheticsServices\NewFolder\" />
+    <Folder Include="AestheticsServices\BackgroundService\" />
   </ItemGroup>
 
 </Project>

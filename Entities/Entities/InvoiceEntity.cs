@@ -79,6 +79,9 @@ namespace Aesthetics.Entities.Entities
 		/// <summary>✅mã buổi đặt lịch</summary>
 		public int? AppointmentId { get; set; }
 
+		/// <summary>🆕 Mã đơn hàng từ GHN (GHN Order Code)</summary>
+		public string? OrderCode { get; set; }
+
 		// ✅ Navigation properties
 		public virtual CustomerEntity? Customer { get; set; }
 		public virtual StaffEntity? Staff { get; set; }

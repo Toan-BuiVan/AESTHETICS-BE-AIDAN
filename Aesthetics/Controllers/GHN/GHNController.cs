@@ -1,4 +1,5 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces.GHN;
+using Aesthetics.Entities.Models.RequestModel;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -82,6 +83,25 @@ namespace Aesthetics.Controllers.GHN
 				}
 
 				var result = await _ghnService.CreateShippingOrdersAsync(request, 2194, 6387655);
+				return Ok(result);
+			}
+			catch (Exception ex)
+			{
+				return StatusCode(500, new { message = ex.Message });
+			}
+		}
+
+		[HttpPost("return-shipping-orders")]
+		public async Task<IActionResult> ReturnShippingOrders([FromBody] ReturnShippingOrderRequest request)
+		{
+			try
+			{
+				if (request?.InvoiceIds == null || request.InvoiceIds.Count == 0)
+				{
+					return BadRequest(new { message = "Vui lòng cung cấp ít nhất một ID hóa đơn để hoàn" });
+				}
+
+				var result = await _ghnService.ReturnShippingOrdersAsync(request, 6387655);
 				return Ok(result);
 			}
 			catch (Exception ex)

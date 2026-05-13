@@ -116,4 +116,9 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public List<int>? invoiceIds { get; set; }
 	}
 
+	public class ReturnShippingOrderRequest
+	{
+		/// <summary>Danh sách ID hóa đơn cần hoàn</summary>
+		public List<int>? InvoiceIds { get; set; }
+	}
 }

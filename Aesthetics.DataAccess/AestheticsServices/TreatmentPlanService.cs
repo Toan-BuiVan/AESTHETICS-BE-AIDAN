@@ -60,10 +60,8 @@ namespace Aesthetics.Data.AestheticsServices
 				var sessionInterval = plan.SessionInterval ?? 1;
 				const decimal discountRate = 0.85m; 
 
-				var pricePerSession = (service.Price / sessionInterval);
-				pricePerSession = pricePerSession * discountRate;
-
-				pricePerSession = Math.Floor(pricePerSession ?? 0 / 1000) * 1000;
+				var pricePerSession = (service.Price / totalSessions);
+				pricePerSession = Math.Floor((pricePerSession ?? 0) / 1000) * 1000;
 
 				var entity = new TreatmentPlanEntity
 				{
