@@ -14,12 +14,13 @@ using Aesthetics.Data.AestheticsServices.TokenService;
 using Aesthetics.Data.RepositoryInterfaces;
 using Aesthetics.Data.RepositoryServices;
 using Aesthetics.DTO.NetCore.DataObject.Model.Momo;
+using ASP_NetCore_Aesthetics.Filter;
 using ASP_NetCore_Aesthetics.Services.MomoServices;
 using ASP_NetCore_Aesthetics.Services.VnPaySevices;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
-using OfficeOpenXml;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
+using OfficeOpenXml;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -121,6 +122,7 @@ builder.Services.AddScoped<ICustomerPaymentInfoService, CustomerPaymentInfoServi
 builder.Services.AddScoped<IRefundServcie, RefundService>();
 builder.Services.AddScoped<IGHNService, GHNService>();
 builder.Services.AddScoped<IStatisticsService, StatisticsService>();
+builder.Services.AddScoped<Filter_CheckToken>();
 
 // Address Info
 builder.Services.AddScoped<IAddressInfoRepository, AddressInfoRepository>();
