@@ -54,7 +54,9 @@ namespace Aesthetics.Data.AestheticsServices
 					StartTime = timeLock.StartTime,
 					EndTime = timeLock.EndTime,
 					IsOverloaded = timeLock.IsOverloaded ?? false,
-					DeleteStatus = false
+					DeleteStatus = false,
+					CreationDate = DateTime.Now,
+					CreatedBy = timeLock.StaffId
 				};
 
 				var created = await _appointmentTimeLockRepository.CreateEntity(entity);
@@ -119,6 +121,11 @@ namespace Aesthetics.Data.AestheticsServices
 					predicate = x => x.ClinicId == timeLock.ClinicId && !x.DeleteStatus;
 				}
 
+				if (timeLock.IsOverloaded.HasValue)
+				{
+					predicate = x => x.IsOverloaded == timeLock.IsOverloaded && !x.DeleteStatus;
+				}
+
 				if (timeLock.StartTime.HasValue)
 				{
 					predicate = x => x.StartTime >= timeLock.StartTime && !x.DeleteStatus;
@@ -127,11 +134,6 @@ namespace Aesthetics.Data.AestheticsServices
 				if (timeLock.EndTime.HasValue)
 				{
 					predicate = x => x.EndTime <= timeLock.EndTime && !x.DeleteStatus;
-				}
-
-				if (timeLock.IsOverloaded.HasValue)
-				{
-					predicate = x => x.IsOverloaded == timeLock.IsOverloaded && !x.DeleteStatus;
 				}
 
 				var allMatching = await _appointmentTimeLockRepository.FindByPredicate(predicate);

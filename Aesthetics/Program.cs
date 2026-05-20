@@ -20,7 +20,10 @@ using ASP_NetCore_Aesthetics.Services.VnPaySevices;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.StackExchangeRedis;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using OfficeOpenXml;
+using System.Text;
+using Microsoft.IdentityModel.Tokens;
 
 
 var builder = WebApplication.CreateBuilder(args);
@@ -36,6 +39,39 @@ builder.Services.AddCors(options =>
               .AllowCredentials();
     });
 });
+
+// ===== JWT AUTHENTICATION CONFIGURATION =====
+builder.Services.AddAuthentication("Bearer")
+	.AddJwtBearer("Bearer", options =>
+	{
+		options.TokenValidationParameters = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+		{
+			ValidateIssuer = true,
+			ValidIssuer = configuration["JWT:ValidIssuer"],
+
+			ValidateAudience = true,
+			ValidAudience = configuration["JWT:ValidAudience"],
+
+			ValidateIssuerSigningKey = true,
+			IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(
+				Encoding.UTF8.GetBytes(configuration["JWT:Secret"])),
+
+			ValidateLifetime = true,
+			ClockSkew = TimeSpan.Zero
+		};
+
+		options.Events = new Microsoft.AspNetCore.Authentication.JwtBearer.JwtBearerEvents
+		{
+			OnAuthenticationFailed = context =>
+			{
+				if (context.Exception.GetType() == typeof(SecurityTokenExpiredException))
+				{
+					context.Response.Headers.Add("x-token-expired", "true");
+				}
+				return Task.CompletedTask;
+			}
+		};
+	});
 
 builder.Services.AddDbContext<AestheticsDbContext>(options =>
     options.UseSqlServer(configuration.GetConnectionString("aesthetics")));
@@ -81,6 +117,8 @@ builder.Services.AddScoped<IWalletRepository, WalletRepository>();
 builder.Services.AddScoped<IAccountSessionsRepository, AccountSessionsRepository>();
 builder.Services.AddScoped<ICustomerPaymentInfoRepository, CustomerPaymentInfoRepository>();
 builder.Services.AddScoped<IRefundRepository, RefundRepository>();
+builder.Services.AddScoped<IPermissionsRepository, PermissionsRepository>();
+builder.Services.AddScoped<IFunctionsRepository, FunctionsRepository>();
 
 
 // ===== Service Registrations =====
@@ -122,6 +160,7 @@ builder.Services.AddScoped<ICustomerPaymentInfoService, CustomerPaymentInfoServi
 builder.Services.AddScoped<IRefundServcie, RefundService>();
 builder.Services.AddScoped<IGHNService, GHNService>();
 builder.Services.AddScoped<IStatisticsService, StatisticsService>();
+builder.Services.AddScoped<IPermissionService, PermissionService>();
 builder.Services.AddScoped<Filter_CheckToken>();
 
 // Address Info

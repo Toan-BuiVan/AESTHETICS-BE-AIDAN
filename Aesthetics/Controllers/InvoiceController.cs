@@ -2,6 +2,7 @@
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_invoiceService = invoiceService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createinvoice")]
 		[HttpPost("createinvoice")]
 		public async Task<IActionResult> Create([FromBody] CreateInvoice invoice)
 		{
@@ -32,6 +35,8 @@ namespace Aesthetics.Controllers
 		//	return Ok(new { success = result });
 		//}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updateinvoiceorderstatus")]
 		[HttpPost("updateinvoiceorderstatus")]
 		public async Task<IActionResult> updateinvoiceorderstatus([FromBody] updateinvoiceorderstatus request)
 		{
@@ -39,6 +44,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getinvoicelist")]
 		[HttpPost("getinvoicelist")]
 		public async Task<IActionResult> GetList([FromBody] GetInvoice invoice)
 		{
@@ -46,10 +53,9 @@ namespace Aesthetics.Controllers
 			return Ok(result);
 		}
 
-		/// <summary>
-		/// 🆕 Update Status Invoice
-		/// POST: /api/invoice/updatestatus
-		/// </summary>
+
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updatestatus")]
 		[HttpPost("updatestatus")]
 		public async Task<IActionResult> UpdateInvoiceStatus([FromBody] UpdateInvoiceStatusRequest request)
 		{
@@ -68,12 +74,7 @@ namespace Aesthetics.Controllers
 			});
 		}
 
-		/// <summary>
-		/// Xuất thông tin hóa đơn kèm địa chỉ giao hàng
-		/// Export invoices with customer delivery address
-		/// </summary>
-		/// <param name="invoiceIds">Danh sách ID hóa đơn</param>
-		/// <returns>Danh sách hóa đơn đã xuất</returns>
+		
 		[HttpPost("export")]
 		[Produces("application/json")]
 		public async Task<IActionResult> ExportInvoices([FromBody] ExportInvoiceOrder exportInvoice)

@@ -2,6 +2,7 @@ using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_clinicStaffService = clinicStaffService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createclinicstaff")]
 		[HttpPost("createclinicstaff")]
 		public async Task<IActionResult> Create([FromBody] CreateClinicStaff clinicStaff)
 		{
@@ -25,6 +28,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updateclinicstaff")]
 		[HttpPost("updateclinicstaff")]
 		public async Task<IActionResult> Update([FromBody] UpdateClinicStaff clinicStaff)
 		{
@@ -32,6 +37,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("deleteclinicstaff")]
 		[HttpPost("deleteclinicstaff")]
 		public async Task<IActionResult> Delete([FromBody] DeleteClinicStaff clinicStaff)
 		{
@@ -39,6 +46,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getclinicstafflist")]
 		[HttpPost("getclinicstafflist")]
 		public async Task<IActionResult> GetList([FromBody] GetClinicStaff clinicStaff)
 		{

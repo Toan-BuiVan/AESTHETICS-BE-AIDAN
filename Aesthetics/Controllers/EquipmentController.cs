@@ -2,6 +2,7 @@ using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_equipmentService = equipmentService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createequipment")]
 		[HttpPost("createequipment")]
 		public async Task<IActionResult> Create([FromBody] RequestEquipment equipment)
 		{
@@ -25,6 +28,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updateequipment")]
 		[HttpPost("updateequipment")]
 		public async Task<IActionResult> Update([FromBody] UpdateEquipment equipment)
 		{
@@ -32,6 +37,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("deleteequipment")]
 		[HttpPost("deleteequipment")]
 		public async Task<IActionResult> Delete([FromBody] DeleteEquipment equipment)
 		{

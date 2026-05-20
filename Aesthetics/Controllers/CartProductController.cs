@@ -2,6 +2,7 @@ using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_cartProductService = cartProductService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createcartproduct")]
 		[HttpPost("createcartproduct")]
 		public async Task<IActionResult> Create([FromBody] CreateCartProduct request)
 		{
@@ -25,6 +28,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updatecartproduct")]
 		[HttpPost("updatecartproduct")]
 		public async Task<IActionResult> Update([FromBody] UpdateCartProduct request)
 		{
@@ -32,6 +37,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("deletecartproduct")]
 		[HttpPost("deletecartproduct")]
 		public async Task<IActionResult> Delete([FromBody] DeleteCartProduct request)
 		{
@@ -39,6 +46,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getcartproductlist")]
 		[HttpPost("getcartproductlist")]
 		public async Task<IActionResult> GetList([FromBody] GetCartProduct request)
 		{

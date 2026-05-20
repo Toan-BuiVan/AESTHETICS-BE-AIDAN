@@ -2,6 +2,7 @@
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_walletService = walletService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createwallet")]
 		[HttpPost("createwallet")]
 		public async Task<IActionResult> Create([FromBody] CreateWallet wallet)
 		{
@@ -25,13 +28,15 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
-		[HttpPost("deletewallet")]
-		public async Task<IActionResult> Delete([FromBody] DeleteWallest wallet)
-		{
-			var result = await _walletService.delete(wallet);
-			return Ok(new { success = result });
-		}
+		//[HttpPost("deletewallet")]
+		//public async Task<IActionResult> Delete([FromBody] DeleteWallest wallet)
+		//{
+		//	var result = await _walletService.delete(wallet);
+		//	return Ok(new { success = result });
+		//}
 
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getwalletlist")]
 		[HttpPost("getwalletlist")]
 		public async Task<IActionResult> GetList([FromBody] WalletGet wallet)
 		{
@@ -39,10 +44,8 @@ namespace Aesthetics.Controllers
 			return Ok(result);
 		}
 
-		/// <summary>
-		/// ✅ Đổi voucher bằng điểm
-		/// Người rank thấp có thể dùng điểm để đổi voucher ở rank cao hơn
-		/// </summary>
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("exchangevoucher")]
 		[HttpPost("exchangevoucher")]
 		public async Task<bool> ExchangeVoucher([FromBody] RequestExchangeVoucher request)
 		{

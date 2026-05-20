@@ -2,6 +2,7 @@
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_productService = productService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createproduct")]
 		[HttpPost("createproduct")]
 		public async Task<IActionResult> Create([FromBody] CreateProduct product)
 		{
@@ -25,6 +28,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updateproduct")]
 		[HttpPost("updateproduct")]
 		public async Task<IActionResult> Update([FromBody] updateProduct product)
 		{
@@ -32,6 +37,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("deleteproduct")]
 		[HttpPost("deleteproduct")]
 		public async Task<IActionResult> Delete([FromBody] deleteProduct product)
 		{

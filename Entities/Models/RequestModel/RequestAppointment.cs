@@ -70,6 +70,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 	{
 		public int? CustomerTreatmentSessionId { get; set; }
 		public int? serviceId { get; set; }
+		public int? AppointmentId { get; set; }
 		public int? customerId { get; set; }
 		/*
 		 2 => "In Progress",

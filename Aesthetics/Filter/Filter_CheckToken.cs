@@ -54,7 +54,7 @@ namespace ASP_NetCore_Aesthetics.Filter
 				SetUnauthorizedResponse(context, "UserID không hợp lệ.");
 				return;
 			}
-			var cacheKey = $"User_{userId}-{deviceName}";
+			var cacheKey = $"User_{userId}_{deviceName}";
 			byte[] cacheData = await _cache.GetAsync(cacheKey);
 			if (cacheData != null)
 			{
@@ -116,6 +116,12 @@ namespace ASP_NetCore_Aesthetics.Filter
 			// Thêm token vào response header
 			context.HttpContext.Response.Headers["New-AccessToken"] = tokenResponse.Token;
 			context.HttpContext.Response.Headers["New-RefreshToken"] = newRefreshToken;
+
+			var newPrincipal = await _tokenService.GetPrincipalFromExpiredToken(tokenResponse.Token);
+			if (newPrincipal != null)
+			{
+				httpContext.User = newPrincipal;
+			}
 		}
 
 		private void SetUnauthorizedResponse(AuthorizationFilterContext context, string message)

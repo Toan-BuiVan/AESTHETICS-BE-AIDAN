@@ -90,8 +90,8 @@ namespace Aesthetics.Data.AestheticsServices
 					_logger.LogWarning("Create StaffShift failed: staffShift is null");
 					return false;
 				}
-				if (!await ValidationStaffShift(staffShift))
-					return false;
+				//if (!await ValidationStaffShift(staffShift))
+				//	return false;
 
 				var entity = new StaffShiftEntity
 				{

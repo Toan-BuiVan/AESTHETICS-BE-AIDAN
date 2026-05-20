@@ -116,11 +116,11 @@ namespace Aesthetics.Data.AestheticsDbContext
 				.HasForeignKey(a => a.CustomerId)
 				.OnDelete(DeleteBehavior.Cascade);
 
-			builder.Entity<CartEntity>()
-				.HasOne(c => c.Customer)
-				.WithMany(cu => cu.Carts)
-				.HasForeignKey(c => c.CustomerId)
-				.OnDelete(DeleteBehavior.Cascade);
+			//builder.Entity<CartEntity>()
+			//	.HasOne(c => c.Customer)
+			//	.WithMany(cu => cu.Carts)
+			//	.HasForeignKey(c => c.CustomerId)
+			//	.OnDelete(DeleteBehavior.Cascade);
 
 			builder.Entity<WalletEntity>()
 				.HasOne(w => w.Customer)

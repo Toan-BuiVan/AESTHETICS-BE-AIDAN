@@ -8,9 +8,10 @@ namespace Aesthetics.Entities.Models.RequestModel
 {
     public class RequestSupplier
     {
-		public string SupplierName { get; set; }
-		public string Address { get; set; }
-		public string Phone { get; set; }
+		public string? SupplierName { get; set; }
+		public string? Address { get; set; }
+		public string? Phone { get; set; }
+		public string? Email { get; set; }
 	}
 
 	public class SupplierUpdate
@@ -19,6 +20,7 @@ namespace Aesthetics.Entities.Models.RequestModel
 		public string? SupplierName { get; set; }
 		public string? Address { get; set; }
 		public string? Phone { get; set; }
+		public string? Email { get; set; }
 	}
 
 	public class SupplierDelete

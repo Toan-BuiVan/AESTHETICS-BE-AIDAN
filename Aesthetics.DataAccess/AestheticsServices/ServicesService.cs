@@ -110,13 +110,13 @@ namespace Aesthetics.Data.AestheticsServices
 			try
 			{
 				_logger.LogInformation("Start deleting Service");
-				var existingService = await _serviceRepository.GetById(service.Id.Value);
-				if (existingService == null)
+				var services = await _serviceRepository.GetByIdForDelete(service.Id.Value);
+				if (services == null)
 				{
 					_logger.LogWarning("Delete Service failed: Not found with Id {Id}", service.Id);
 					return false;
 				}
-				var deleted = await _serviceRepository.DeleteRangeEntitiesStatus(existingService);
+				var deleted = await _serviceRepository.DeleteRangeEntitiesStatus(services);
 				if (!deleted)
 				{
 					_logger.LogError("Delete Service failed at repository level: Id {Id}", service.Id);

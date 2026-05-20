@@ -467,6 +467,13 @@ namespace Aesthetics.Data.AestheticsServices
 					_logger.LogInformation("TreatmentPlan {Id}: Description updated", plan.Id);
 				}
 
+				if (!string.IsNullOrWhiteSpace(plan.PlanName) && existingPlan.PlanName != plan.PlanName)
+				{
+					existingPlan.PlanName = plan.PlanName;
+					hasChanges = true;
+					_logger.LogInformation("TreatmentPlan {Id}: Description updated", plan.Id);
+				}
+
 				if (!hasChanges)
 				{
 					_logger.LogInformation("Update TreatmentPlan: No changes detected for Id {Id}", plan.Id);
@@ -652,6 +659,7 @@ namespace Aesthetics.Data.AestheticsServices
 
 				// Nhóm theo SessionNumber để tái tạo cấu trúc SessionProductDefinition
 				var sessionProductDefinitions = existingSessionProducts
+					.Where(sp => sp.TreatmentSession != null)
 					.GroupBy(sp => sp.TreatmentSession!.SessionNumber)
 					.Where(g => g.Key.HasValue)
 					.Select(g => new SessionProductDefinition

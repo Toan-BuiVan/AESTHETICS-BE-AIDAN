@@ -27,6 +27,8 @@ namespace Aesthetics.Data.AestheticsServices
 		private ICustomerRepository _customerRepository;
 		private IStaffRepository _staffRepository;
 		private ICartRepository _cartRepository;
+		private IFunctionsRepository _functionsRepository;
+		private IPermissionsRepository _permissionsRepository;
 
 		public AccountService(ILogger<AccountService> logger
 			, IAccountRepository accountRepository
@@ -34,7 +36,9 @@ namespace Aesthetics.Data.AestheticsServices
 			, ITokenService tokenService
 			, ICustomerRepository customerRepository
 			, IStaffRepository staffRepository
-			, ICartRepository cartRepository)
+			, ICartRepository cartRepository
+			,IFunctionsRepository functionsRepository
+			, IPermissionsRepository permissionsRepository)
 		{
 			_logger = logger;
 			_accountRepository = accountRepository;
@@ -43,6 +47,8 @@ namespace Aesthetics.Data.AestheticsServices
 			_customerRepository = customerRepository;
 			_staffRepository = staffRepository;
 			_cartRepository = cartRepository;
+			_functionsRepository = functionsRepository;
+			_permissionsRepository = permissionsRepository;
 		}
 
 		public async Task<bool> create(RequestAccount request)
@@ -93,9 +99,7 @@ namespace Aesthetics.Data.AestheticsServices
 							await _customerRepository.UpdateAccumulatedPoints(referrerUser.Id);
 						}
 
-						/*
-						 * Thêm quyền cho khách hàng
-						 */
+						await AssignCustomerPermissionsAsync(account.Id);
 						break;
 
 					case AccountRole.Staff:
@@ -109,10 +113,7 @@ namespace Aesthetics.Data.AestheticsServices
 							LicenseNumber = null
 						};
 						await _staffRepository.CreateEntity(staff);
-						/*
-						 * Thêm quyền cho nhân viên
-						 */
-
+						await AssignStaffPermissionsAsync(account.Id);
 						break;
 					case AccountRole.Admin:
 						var admin = new StaffEntity
@@ -125,6 +126,7 @@ namespace Aesthetics.Data.AestheticsServices
 							LicenseNumber = null
 						};
 						await _staffRepository.CreateEntity(admin);
+						await AssignAdminPermissionsAsync(account.Id);
 						break;
 
 					default:
@@ -218,7 +220,7 @@ namespace Aesthetics.Data.AestheticsServices
 			}
 		}
 
-			public async Task<bool> update(UpdateAccount account)
+		public async Task<bool> update(UpdateAccount account)
 			{
 				try
 				{
@@ -378,5 +380,336 @@ namespace Aesthetics.Data.AestheticsServices
 				return null;
 			}
 		}
+
+		#region Permisstion
+
+		private async Task AssignAdminPermissionsAsync(int accountId)
+		{
+			try
+			{
+				_logger.LogInformation("Start AssignStaffPermissionsAsync for AccountId: {AccountId}", accountId);
+
+				// Staff function codes
+				var staffFunctionCodes = new[]
+				{
+					"create-shipping-orders",
+					"createaccount",
+					"updateaccount",
+					"deleteaccount",
+					"pagingaccount",
+					"getprofileaccount",
+					"updateappointmentstatus",
+					"deleteappointment",
+					"getappointmentlist",
+					"createappointmenttimelock",
+					"updateappointmenttimelock",
+					"deleteappointmenttimelock",
+					"getappointmenttimelockList",
+					"createclinicstaff",
+					"updateclinicstaff",
+					"deleteclinicstaff",
+					"getclinicstafflist",
+					"updatecustomer",
+					"getlistcustomer",
+					"createequipment",
+					"updateequipment",
+					"deleteequipment",
+					"getequipmentlist",
+					"createinvoice",
+					"updateinvoiceorderstatus",
+					"getinvoicelist",
+					"updatestatus",
+					"createproduct",
+					"updateproduct",
+					"deleteproduct",
+					"getproductlist",
+					"exportproducttoexcel",
+					"createrefund",
+					"updatestatusrefund",
+					"getlistrefund",
+					"createservice",
+					"updateservice",
+					"deleteservice",
+					"getservicelist",
+					"exportservicetoexcel",
+					"createservicetype",
+					"updateservicetype",
+					"deleteservicetype",
+					"getservicetypelist",
+					"createsessionproduct",
+					"updatesessionproduct",
+					"deletesessionproduct",
+					"getsessionproductlist",
+					"getliststaff",
+					"updatestaff",
+					"createstaffshift",
+					"deletestaffshift",
+					"getstaffshiftlist",
+					"getmonthlystatistics",
+					"gettopvouchersused",
+					"gettopdoctorsbykpi",
+					"gettopsellingproducts",
+					"gettoppopularservices",
+					"gettopdoctorsbyrating",
+					"gettopsalesstaff",
+					"getstatisticssummary",
+					"daily-revenue",
+					"createsupplier",
+					"updatesupplier",
+					"deletesupplier",
+					"pagingsupplier",
+					"createtreatmentplan",
+					"updatetreatmentplan",
+					"deletetreatmentplan",
+					"gettreatmentplanlist",
+					"createvoucher",
+					"updatevoucher",
+					"deletevoucher",
+					"getvoucherlist",
+					"getpermissionlist",
+					"updatepermission",
+					"createclinic",
+					"updateclinic",
+					"deleteclinic",
+					"createtreatmentsession",
+					"updatetreatmentsession",
+					"deletetreatmentsession"
+				};
+
+				await AssignPermissionsByFunctionCodesAsync(accountId, staffFunctionCodes);
+				_logger.LogInformation("AssignStaffPermissionsAsync success for AccountId: {AccountId}", accountId);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "AssignStaffPermissionsAsync failed for AccountId: {AccountId}", accountId);
+				throw;
+			}
+		}
+
+		private async Task AssignStaffPermissionsAsync(int accountId)
+		{
+			try
+			{
+				_logger.LogInformation("Start AssignStaffPermissionsAsync for AccountId: {AccountId}", accountId);
+
+				// Staff function codes
+				var staffFunctionCodes = new[]
+				{
+					"create-shipping-orders",
+					"createaccount",
+					"updateaccount",
+					"deleteaccount",
+					"pagingaccount",
+					"getprofileaccount",
+					"updateappointmentstatus",
+					"deleteappointment",
+					"getappointmentlist",
+					"createappointmenttimelock",
+					"updateappointmenttimelock",
+					"deleteappointmenttimelock",
+					"getappointmenttimelockList",
+					"createclinicstaff",
+					"updateclinicstaff",
+					"deleteclinicstaff",
+					"getclinicstafflist",
+					"updatecustomer",
+					"getlistcustomer",
+					"createequipment",
+					"updateequipment",
+					"deleteequipment",
+					"getequipmentlist",
+					"createinvoice",
+					"updateinvoiceorderstatus",
+					"getinvoicelist",
+					"updatestatus",
+					"createproduct",
+					"updateproduct",
+					"deleteproduct",
+					"getproductlist",
+					"exportproducttoexcel",
+					"createrefund",
+					"updatestatusrefund",
+					"getlistrefund",
+					"createservice",
+					"updateservice",
+					"deleteservice",
+					"getservicelist",
+					"exportservicetoexcel",
+					"createservicetype",
+					"updateservicetype",
+					"deleteservicetype",
+					"getservicetypelist",
+					"createsessionproduct",
+					"updatesessionproduct",
+					"deletesessionproduct",
+					"getsessionproductlist",
+					"getliststaff",
+					"updatestaff",
+					"createstaffshift",
+					"deletestaffshift",
+					"getstaffshiftlist",
+					"getmonthlystatistics",
+					"gettopvouchersused",
+					"gettopdoctorsbykpi",
+					"gettopsellingproducts",
+					"gettoppopularservices",
+					"gettopdoctorsbyrating",
+					"gettopsalesstaff",
+					"getstatisticssummary",
+					"daily-revenue",
+					"createsupplier",
+					"updatesupplier",
+					"deletesupplier",
+					"pagingsupplier",
+					"createtreatmentplan",
+					"updatetreatmentplan",
+					"deletetreatmentplan",
+					"gettreatmentplanlist",
+					"createvoucher",
+					"updatevoucher",
+					"deletevoucher",
+					"getvoucherlist",
+					"getpermissionlist",
+					"createclinic",
+					"updateclinic",
+					"deleteclinic",
+					"createtreatmentsession",
+					"updatetreatmentsession",
+					"deletetreatmentsession"
+				};
+
+				await AssignPermissionsByFunctionCodesAsync(accountId, staffFunctionCodes);
+				_logger.LogInformation("AssignStaffPermissionsAsync success for AccountId: {AccountId}", accountId);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "AssignStaffPermissionsAsync failed for AccountId: {AccountId}", accountId);
+				throw;
+			}
+		}
+
+		private async Task AssignCustomerPermissionsAsync(int accountId)
+		{
+			try
+			{
+				_logger.LogInformation("Start AssignCustomerPermissionsAsync for AccountId: {AccountId}", accountId);
+
+				// Customer function codes
+				var customerFunctionCodes = new[]
+				{
+				"process-user-query",
+				"provinces",
+				"districts",
+				"wards",
+				"calculate-shipping-fee",
+				"createaccount",
+				"updateaccount",
+				"getprofileaccount",
+				"getaccountsession",
+				"createaddressinfo",
+				"updateaddressinfo",
+				"deleteaddressinfo",
+				"getlistaddressinfo",
+				"createappointment",
+				"updateappointmentstatus",
+				"getappointmentlist",
+				"getdoctoravailability",
+				"getdoctorservices",
+				"createcartproduct",
+				"updatecartproduct",
+				"deletecartproduct",
+				"getcartproductlist",
+				"createcomment",
+				"updatecomment",
+				"deletecomment",
+				"getcommentlist",
+				"updatecustomer",
+				"getlistcustomer",
+				"createcustomerpayment",
+				"updatecustomerpayment",
+				"deletecustomerpayment",
+				"getlistcustomerpayment",
+				"createcustomertreatmentplan",
+				"deletecustomertreatmentplan",
+				"getcustomertreatmentplanlist",
+				"deletecustomertreatmentsession",
+				"getequipmentlist",
+				"createinvoice",
+				"getinvoicelist",
+				"updatestatus",
+				"vnpay/create-payment-url",
+				"momo/create-payment-url",
+				"getproductlist",
+				"createrefund",
+				"getlistrefund",
+				"getservicelist",
+				"getservicetypelist",
+				"getliststaff",
+				"pagingsupplier",
+				"gettreatmentplanlist",
+				"getvoucherlist",
+				"createwallet",
+				"getwalletlist",
+				"exchangevoucher"
+			};
+
+				await AssignPermissionsByFunctionCodesAsync(accountId, customerFunctionCodes);
+				_logger.LogInformation("AssignCustomerPermissionsAsync success for AccountId: {AccountId}", accountId);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "AssignCustomerPermissionsAsync failed for AccountId: {AccountId}", accountId);
+				throw;
+			}
+		}
+
+		private async Task AssignPermissionsByFunctionCodesAsync(int accountId, string[] functionCodes)
+		{
+			try
+			{
+				_logger.LogInformation("Start AssignPermissionsByFunctionCodesAsync for AccountId: {AccountId}", accountId);
+
+				// Get functions by codes
+				var functions = await _functionsRepository.FindFunctionsByCodesAsync(functionCodes);
+				if (!functions.Any())
+				{
+					_logger.LogWarning("No functions found for AccountId: {AccountId}", accountId);
+					return;
+				}
+
+				// Create permission entities
+				var permissions = functions
+					.Where(f => f != null && !f.DeleteStatus)
+					.Select(f => new PermissionEntity
+					{
+						AccountId = accountId,
+						FunctionId = f.Id,
+						IsActive = true,
+						DeleteStatus = false
+					})
+					.ToList();
+
+				if (!permissions.Any())
+				{
+					_logger.LogWarning("No valid permissions to assign for AccountId: {AccountId}", accountId);
+					return;
+				}
+
+				// Save permissions
+				foreach (var permission in permissions)
+				{
+					await _permissionsRepository.CreateEntity(permission);
+				}
+
+				_logger.LogInformation("AssignPermissionsByFunctionCodesAsync success: Assigned {Count} permissions for AccountId: {AccountId}",
+					permissions.Count, accountId);
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "AssignPermissionsByFunctionCodesAsync failed for AccountId: {AccountId}", accountId);
+				throw;
+			}
+		}
+		#endregion
 	}
 }

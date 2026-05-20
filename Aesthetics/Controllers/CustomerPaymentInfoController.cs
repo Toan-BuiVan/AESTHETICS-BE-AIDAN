@@ -1,5 +1,6 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Models.RequestModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
@@ -23,11 +24,9 @@ namespace Aesthetics.Controllers
             _customerPaymentInfoService = customerPaymentInfoService;
         }
 
-        /// <summary>
-        /// ✅ Tạo thông tin thanh toán mới cho khách hàng
-        /// POST: api/customerpaymentinfo/create
-        /// </summary>
-        [HttpPost("createcustomerpayment")]
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createcustomerpayment")]
+		[HttpPost("createcustomerpayment")]
         public async Task<IActionResult> CreatePaymentInfo([FromBody] CreateCustomerPaymentModel request)
         {
             try
@@ -77,11 +76,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// ✅ Cập nhật thông tin thanh toán
-        /// PUT: api/customerpaymentinfo/update
-        /// </summary>
-        [HttpPost("updatecustomerpayment")]
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updatecustomerpayment")]
+		[HttpPost("updatecustomerpayment")]
         public async Task<IActionResult> UpdatePaymentInfo([FromBody] updatecustomerpayment request)
         {
             try
@@ -131,11 +128,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// ✅ Xóa thông tin thanh toán
-        /// DELETE: api/customerpaymentinfo/delete
-        /// </summary>
-        [HttpPost("deletecustomerpayment")]
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("deletecustomerpayment")]
+		[HttpPost("deletecustomerpayment")]
         public async Task<IActionResult> DeletePaymentInfo([FromBody] deletecustomerpayment request)
         {
             try
@@ -184,11 +179,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// ✅ Lấy danh sách thông tin thanh toán của khách hàng
-        /// POST: api/customerpaymentinfo/get-list
-        /// </summary>
-        [HttpPost("getlistcustomerpayment")]
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getlistcustomerpayment")]
+		[HttpPost("getlistcustomerpayment")]
         public async Task<IActionResult> GetPaymentInfoList([FromBody] getlistcustomerpayment request)
         {
             try

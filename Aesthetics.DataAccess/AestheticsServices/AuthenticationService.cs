@@ -86,11 +86,14 @@ namespace Aesthetics.Data.AestheticsServices
 					staff = staffs.FirstOrDefault();
 				}
 
+				var DeviceName = await _tokenService.GetDeviceName();
 				var authClaims = new List<Claim>
 				{
 					new Claim(ClaimTypes.Name, account.UserName),
 					new Claim(ClaimTypes.PrimarySid, account.Id.ToString()),
-					new Claim(ClaimTypes.Role, account.Role.ToString())
+					new Claim(ClaimTypes.Role, account.Role.ToString()),
+					new Claim("DeviceName", DeviceName)
+
 				};
 
 				// Add CustomerId if customer exists
@@ -107,7 +110,6 @@ namespace Aesthetics.Data.AestheticsServices
 				_ = int.TryParse(_configuration["JWT:RefreshTokenValidityInDays"], out int refreshTokenValidityInDays);
 				var refeshToken = await _tokenService.GenerateRefreshToken();
 				await _authenticationRepository.UpdateRefeshToken(account.Id, refeshToken, DateTime.Now.AddDays(refreshTokenValidityInDays));
-				var DeviceName = await _tokenService.GetDeviceName();
 				var remoteIpAddress = _httpContextAccessor.HttpContext.Connection.RemoteIpAddress;
 				var cachKey = "User_" + account.Id + "_" + DeviceName;
 				var user_Session = new AccountSessionEntity
@@ -121,17 +123,17 @@ namespace Aesthetics.Data.AestheticsServices
 				};
 				var sessionDataForCache = new
 				{
-					user_Session.Id,
-					user_Session.AccountId,
-					user_Session.Token,
-					user_Session.DeviceName,
-					user_Session.IP,
-					user_Session.CreateTime,
-					user_Session.DeleteStatus
+					AccountId = account.Id,
+					Token = new JwtSecurityTokenHandler().WriteToken(newToken),
+					RefeshToken = refeshToken,
+					DeviceName = DeviceName,
+					IP = remoteIpAddress.ToString(),
+					CreateTime = DateTime.Now,
 				};
 				await _account.CreateEntity(user_Session);
 				var dataCachingJson = JsonConvert.SerializeObject(sessionDataForCache);
 				var dataToCache = Encoding.UTF8.GetBytes(dataCachingJson);
+				//3.Xét thời gian sống của Token trong Caching 
 				DistributedCacheEntryOptions options = new DistributedCacheEntryOptions().SetAbsoluteExpiration(DateTime.Now.AddMinutes(5));
 				await _cache.SetAsync(cachKey, dataToCache, options);
 				_logger.LogInformation($"Session cached successfully for user {account.Id} on device {DeviceName}");

@@ -312,7 +312,7 @@ namespace Aesthetics.Data.AestheticsServices.AI
 				foreach (var product in products)
 				{
 					var salesCount = (await _invoiceDetailsRepository.FindByPredicate(x =>
-						x.ServiceId == product.Id &&
+						x.ProductId == product.Id &&
 						!x.DeleteStatus)).Count();
 
 					productSales.Add((product.Id, product.ProductName, product.SellingPrice ?? 0, salesCount));

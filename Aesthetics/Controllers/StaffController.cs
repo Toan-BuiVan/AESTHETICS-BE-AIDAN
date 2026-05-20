@@ -1,5 +1,6 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Models.RequestModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Components.Web;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -18,6 +19,7 @@ namespace Aesthetics.Controllers
 			_staffService = staffService;
 		}
 
+
 		[HttpPost("getliststaff")]
 		public async Task<IActionResult> GetList([FromBody] RequestStaffSearch searchRequest)
 		{
@@ -30,6 +32,8 @@ namespace Aesthetics.Controllers
 			return Ok(result);
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updatestaff")]
 		[HttpPost("updatestaff")]
 		public async Task<bool> updatestaff( UpdateStaffRequest searchRequest)
 		{

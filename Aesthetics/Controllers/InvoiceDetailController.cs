@@ -2,6 +2,7 @@ using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_invoiceDetailService = invoiceDetailService;
 		}
 
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getinvoicedetaillist")]
 		[HttpGet("getinvoicedetaillist/{invoiceId}")]
 		public async Task<IActionResult> GetList(int invoiceId)
 		{

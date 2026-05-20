@@ -624,46 +624,99 @@ namespace Aesthetics.Data.AestheticsServices
 				_logger.LogInformation("[SINGLE_SERVICE_INVOICE] Creating invoice for appointmentId={AppointmentId}, serviceId={ServiceId}",
 					appointmentId, service.Id);
 
-				// Tạo InvoiceLineItem cho dịch vụ
-				var lineItems = new List<InvoiceLineItem>
+				// ✅ Lấy giá từ Service
+				decimal servicePrice = service.Price ?? 0;
+				_logger.LogInformation("[SINGLE_SERVICE_INVOICE] GET_PRICE: ServiceId={ServiceId}, Price={Price}",
+					service.Id, servicePrice);
+
+				// ✅ Xử lý voucher
+				decimal discountValue = 0;
+				int? appliedVoucherId = null;
+
+				if (appointment.VoucherId.HasValue)
 				{
-					new InvoiceLineItem
+					var voucher = await _voucherRepository.GetById(appointment.VoucherId.Value);
+					if (voucher != null && voucher.IsActive == true && !voucher.DeleteStatus)
 					{
-						ProductId = service.Id,
-						Quantity = 1
+						discountValue = servicePrice * (voucher.DiscountValue.Value / 100);
+						if (voucher.MaxValue.HasValue && discountValue > voucher.MaxValue.Value)
+							discountValue = voucher.MaxValue.Value;
+						appliedVoucherId = appointment.VoucherId.Value;
+
+						_logger.LogInformation("[SINGLE_SERVICE_INVOICE] VOUCHER_APPLIED: VoucherId={VoucherId}, DiscountValue={DiscountValue}",
+							appliedVoucherId, discountValue);
 					}
-				};
+				}
 
-				// Tạo CreateInvoice request
-				var createInvoiceRequest = new CreateInvoice
+				// ✅ Tính giá sau giảm
+				decimal finalPrice = servicePrice - discountValue;
+
+				// ✅ PaidAmount LUÔN = 0 lúc tạo invoice (chưa thanh toán thực tế)
+				decimal paidAmount = 0m;
+
+				// ✅ Ánh xạ TypeInvoice sang invoice status string
+				string invoiceStatus = GetInvoiceStatusByPaymentStatus(appointment.TypeInvoice);
+
+				_logger.LogInformation("[SINGLE_SERVICE_INVOICE] STATUS_MAPPING: TypeInvoice={TypeInvoice} → Status={Status}, ServicePrice={ServicePrice}, FinalPrice={FinalPrice}, PaidAmount={PaidAmount}, OutstandingBalance={OutstandingBalance}",
+					appointment.TypeInvoice, invoiceStatus, servicePrice, finalPrice, paidAmount, finalPrice - paidAmount);
+
+				// ✅ Tạo InvoiceEntity
+				var invoice = new InvoiceEntity
 				{
-					CustomerId = appointment.CustomerId,
-					StaffId = appointment.StaffId,
-					LineItems = lineItems,
+					CustomerId = appointment.CustomerId.Value,
+					StaffId = appointment.StaffId.Value,
+					ServiceId = service.Id,
+					VoucherId = appliedVoucherId,
+					TotalMoney = servicePrice,
+					DiscountValue = discountValue,
+					FinalPrice = finalPrice,
+					PaidAmount = paidAmount,
+					OutstandingBalance = finalPrice - paidAmount,
+					DateCreated = DateTime.UtcNow,
+					Status = invoiceStatus,
 					Type = "DichVu",
-					VoucherId = appointment.VoucherId,
-					PaidAmount = 0,
-					PaymentMethod = "ThanhToanOnline",
-					Notes = $"Service Appointment ID: {appointmentId}"
+					OrderStatus = "DangChoXuLy",
+					PaymentMethod = appointment.PaymentMethod,
+					DeleteStatus = false,
+					AppointmentId = appointmentId
 				};
 
-				// Gọi InvoiceService để tạo hóa đơn
-				bool invoiceCreated = await _invoiceService.create(createInvoiceRequest);
+				var invoiceCreated = await _invoiceRepository.CreateEntity(invoice);
 				if (!invoiceCreated)
 				{
-					_logger.LogWarning("[SINGLE_SERVICE_INVOICE] Failed to create invoice");
+					_logger.LogWarning("[SINGLE_SERVICE_INVOICE] INVOICE_CREATE_FAILED: Failed to create invoice entity");
 					return null;
 				}
 
-				_logger.LogInformation("[SINGLE_SERVICE_INVOICE] ✓ Invoice created successfully");
+				_logger.LogInformation("[SINGLE_SERVICE_INVOICE] ✓ Invoice created: InvoiceId={InvoiceId}, ServicePrice={ServicePrice}, FinalPrice={FinalPrice}, Status={Status}",
+					invoice.Id, servicePrice, finalPrice, invoiceStatus);
 
-				// Lấy InvoiceId mới tạo (cần thêm logic để lấy ID)
-				// Tạm thời trả về null, bạn cần thêm logic để lấy ID từ hóa đơn vừa tạo
-				return null;
+				// ✅ Tạo InvoiceDetailEntity
+				var invoiceDetail = new InvoiceDetailEntity
+				{
+					InvoiceId = invoice.Id,
+					ServiceId = service.Id,
+					Price = servicePrice,
+					Quantity = 1,
+					TotalMoney = servicePrice,
+					DiscountValue = discountValue,
+					FinalPrice = finalPrice,
+					Status = invoiceStatus,
+					Type = "DichVu",
+					StatusComment = false,
+					DeleteStatus = false
+				};
+
+				await _invoiceDetailsRepository.CreateEntity(invoiceDetail);
+
+				_logger.LogInformation("[SINGLE_SERVICE_INVOICE] ✓ Invoice detail created: InvoiceId={InvoiceId}, ServiceId={ServiceId}, Price={Price}",
+					invoice.Id, service.Id, servicePrice);
+
+				return invoice.Id;
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "[SINGLE_SERVICE_INVOICE] EXCEPTION");
+				_logger.LogError(ex, "[SINGLE_SERVICE_INVOICE] EXCEPTION: Exception in CreateInvoiceForSingleServiceAsync");
 				return null;
 			}
 		}
@@ -1265,83 +1318,129 @@ namespace Aesthetics.Data.AestheticsServices
 		{
 			try
 			{
-				_logger.LogInformation("VALIDATION_START: Begin comprehensive validation");
+				_logger.LogInformation("VALIDATION_START: Bắt đầu quá trình xác thực tổng quát");
 
 				var appointmentTime = appointment.StartTime.Value;
 				var appointmentEndTime = appointmentTime.AddMinutes(serviceDuration);
 
-				_logger.LogInformation("VALIDATE_DOCTOR: Checking doctor existence");
+				_logger.LogInformation("VALIDATE_DOCTOR: Kiểm tra sự tồn tại của bác sĩ");
+
 				var doctor = await _staffRepository.GetById(appointment.StaffId.Value);
+
 				if (doctor == null || doctor.DeleteStatus)
-					return (false, "Doctor not found");
+					return (false, "Không tìm thấy bác sĩ");
+
 				if (doctor.IsDoctor != true)
-					return (false, "Staff is not a doctor");
-				_logger.LogInformation("VALIDATE_DOCTOR_OK: Doctor validated");
+					return (false, "Nhân viên không phải là bác sĩ");
 
-				_logger.LogInformation("VALIDATE_CLINIC: Checking clinic");
+				_logger.LogInformation("VALIDATE_DOCTOR_OK: Xác thực bác sĩ thành công");
+
+				_logger.LogInformation("VALIDATE_CLINIC: Kiểm tra phòng khám");
+
 				var clinic = await GetClinicForStaff(appointment.StaffId.Value);
-				if (clinic == 0)
-					return (false, "Clinic not found");
-				_logger.LogInformation("VALIDATE_CLINIC_OK: Clinic validated");
 
-				_logger.LogInformation("VALIDATE_HOURS: Checking business hours");
+				if (clinic == 0)
+					return (false, "Không tìm thấy phòng khám");
+
+				_logger.LogInformation("VALIDATE_CLINIC_OK: Xác thực phòng khám thành công");
+
+				_logger.LogInformation("VALIDATE_HOURS: Kiểm tra giờ làm việc");
+
 				if (appointmentTime < DateTime.UtcNow)
-					return (false, "Cannot book appointment in the past");
+					return (false, "Không thể đặt lịch trong quá khứ");
+
 				if (appointmentTime.Hour < 8 || appointmentTime.Hour >= 17)
-					return (false, "Outside working hours (08:00-17:00)");
+					return (false, "Ngoài giờ làm việc (08:00-17:00)");
+
 				_logger.LogInformation("VALIDATE_HOURS_OK: {Time:HH:mm}", appointmentTime);
 
-				_logger.LogInformation("VALIDATE_SLOT_FIT: Checking slot fits in working hours");
-				if (appointmentEndTime.Hour > 17 || (appointmentEndTime.Hour == 17 && appointmentEndTime.Minute > 0))
-					return (false, $"Appointment ends at {appointmentEndTime:HH:mm} which exceeds working hours");
-				_logger.LogInformation("VALIDATE_SLOT_FIT_OK: {Start:HH:mm} - {End:HH:mm}", appointmentTime, appointmentEndTime);
+				_logger.LogInformation("VALIDATE_SLOT_FIT: Kiểm tra khung giờ có nằm trong giờ làm việc");
 
-				_logger.LogInformation("VALIDATE_TIME_LOCK: Checking time locks");
-				var timeLocks = await _appointmentTimeLockRepository.FindByPredicate(x =>
-					x.StartTime <= appointmentTime &&
-					x.EndTime >= appointmentEndTime &&
-					!x.DeleteStatus);
-				if (timeLocks.Any())
-					return (false, $"Time slot {appointmentTime:HH:mm} - {appointmentEndTime:HH:mm} is locked");
-				_logger.LogInformation("VALIDATE_TIME_LOCK_OK: No time locks");
+				if (appointmentEndTime.Hour > 17 ||
+				   (appointmentEndTime.Hour == 17 && appointmentEndTime.Minute > 0))
+					return (false, $"Lịch hẹn kết thúc lúc {appointmentEndTime:HH:mm} vượt quá giờ làm việc");
 
-				_logger.LogInformation("VALIDATE_DOCTOR_LIMIT: Checking doctor daily limit");
-				var doctorAppointmentsToday = await _appointmentRepositoty.FindByPredicate(x =>
-					x.StaffId == appointment.StaffId.Value &&
-					x.StartTime!.Value.Date == appointmentTime.Date &&
-					x.Status != 4 &&
-					!x.DeleteStatus);
-				int doctorCount = doctorAppointmentsToday.Count();
-				if (doctorCount >= MAX_DOCTOR_DAILY_LIMIT)
-					return (false, $"Doctor has reached daily limit of {MAX_DOCTOR_DAILY_LIMIT} appointments");
-				_logger.LogInformation("VALIDATE_DOCTOR_LIMIT_OK: {Count}/{Max}", doctorCount, MAX_DOCTOR_DAILY_LIMIT);
-
-				_logger.LogInformation("VALIDATE_CLINIC_LIMIT: Checking clinic daily limit");
-				var clinicAppointmentsToday = await _appointmentAssignmentRepository.FindByPredicate(x =>
-					x.ClinicId == clinic &&
-					x.AssignedDate!.Value.Date == appointmentTime.Date &&
-					!x.DeleteStatus);
-				int clinicCount = clinicAppointmentsToday.Count();
-				if (clinicCount >= MAX_CLINIC_DAILY_LIMIT)
-					return (false, $"Clinic has reached daily limit of {MAX_CLINIC_DAILY_LIMIT} appointments");
-				_logger.LogInformation("VALIDATE_CLINIC_LIMIT_OK: {Count}/{Max}", clinicCount, MAX_CLINIC_DAILY_LIMIT);
-
-				_logger.LogInformation("VALIDATE_CONFLICT: Checking conflicts with existing appointments");
-				bool hasConflict = await CheckConflictWithExistingAppointments(
-					appointment.StaffId.Value,
+				_logger.LogInformation(
+					"VALIDATE_SLOT_FIT_OK: {Start:HH:mm} - {End:HH:mm}",
 					appointmentTime,
-					serviceDuration,
-					appointmentTime.Date);
+					appointmentEndTime
+				);
+
+				_logger.LogInformation("VALIDATE_TIME_LOCK: Kiểm tra khóa khung giờ");
+
+				var timeLocks = await _appointmentTimeLockRepository.FindByPredicate(x =>
+								x.StartTime <= appointmentTime &&
+								x.EndTime >= appointmentEndTime &&
+								!x.DeleteStatus);
+
+				if (timeLocks.Any())
+					return (false, $"Khung giờ {appointmentTime:HH:mm} - {appointmentEndTime:HH:mm} đang bị khóa");
+
+				_logger.LogInformation("VALIDATE_TIME_LOCK_OK: Không có khóa thời gian");
+
+				_logger.LogInformation("VALIDATE_DOCTOR_LIMIT: Kiểm tra giới hạn lịch hẹn trong ngày của bác sĩ");
+
+				var doctorAppointmentsToday = await _appointmentRepositoty.FindByPredicate(x =>
+								x.StaffId == appointment.StaffId.Value &&
+								x.StartTime!.Value.Date == appointmentTime.Date &&
+								x.Status != 4 &&
+								!x.DeleteStatus);
+
+				int doctorCount = doctorAppointmentsToday.Count();
+
+				if (doctorCount >= MAX_DOCTOR_DAILY_LIMIT)
+					return (false, $"Bác sĩ đã đạt giới hạn {MAX_DOCTOR_DAILY_LIMIT} lịch hẹn trong ngày");
+
+				_logger.LogInformation(
+					"VALIDATE_DOCTOR_LIMIT_OK: {Count}/{Max}",
+					doctorCount,
+					MAX_DOCTOR_DAILY_LIMIT
+				);
+
+				_logger.LogInformation("VALIDATE_CLINIC_LIMIT: Kiểm tra giới hạn lịch hẹn trong ngày của phòng khám");
+
+				var clinicAppointmentsToday = await _appointmentAssignmentRepository.FindByPredicate(x =>
+								x.ClinicId == clinic &&
+								x.AssignedDate!.Value.Date == appointmentTime.Date &&
+								!x.DeleteStatus);
+
+				int clinicCount = clinicAppointmentsToday.Count();
+
+				if (clinicCount >= MAX_CLINIC_DAILY_LIMIT)
+					return (false, $"Phòng khám đã đạt giới hạn {MAX_CLINIC_DAILY_LIMIT} lịch hẹn trong ngày");
+
+				_logger.LogInformation(
+					"VALIDATE_CLINIC_LIMIT_OK: {Count}/{Max}",
+					clinicCount,
+					MAX_CLINIC_DAILY_LIMIT
+				);
+
+				_logger.LogInformation("VALIDATE_CONFLICT: Kiểm tra xung đột với lịch hẹn hiện có");
+
+				bool hasConflict = await CheckConflictWithExistingAppointments(
+								appointment.StaffId.Value,
+								appointmentTime,
+								serviceDuration,
+								appointmentTime.Date);
+
 				if (hasConflict)
-					return (false, "Time slot conflicts with existing appointment");
-				_logger.LogInformation("VALIDATE_CONFLICT_OK: No conflicts");
+					return (false, "Khung giờ bị trùng với lịch hẹn hiện có");
 
-				_logger.LogInformation("VALIDATE_CTS_STATUS: Checking CustomerTreatmentSession status");
-				if (customerTreatmentSession.Status != "ChoDatLich" && customerTreatmentSession.Status != "ChuaThucHien")
-					return (false, $"Session cannot be booked (Status: {customerTreatmentSession.Status})");
-				_logger.LogInformation("VALIDATE_CTS_STATUS_OK: {Status}", customerTreatmentSession.Status);
+				_logger.LogInformation("VALIDATE_CONFLICT_OK: Không có xung đột lịch hẹn");
 
-				_logger.LogInformation("VALIDATION_SUCCESS: All validations passed");
+				_logger.LogInformation("VALIDATE_CTS_STATUS: Kiểm tra trạng thái CustomerTreatmentSession");
+
+				if (customerTreatmentSession.Status != "ChoDatLich" &&
+					customerTreatmentSession.Status != "ChuaThucHien")
+					return (false, $"Phiên điều trị không thể đặt lịch (Trạng thái: {customerTreatmentSession.Status})");
+
+				_logger.LogInformation(
+					"VALIDATE_CTS_STATUS_OK: {Status}",
+					customerTreatmentSession.Status
+				);
+
+				_logger.LogInformation("VALIDATION_SUCCESS: Tất cả điều kiện xác thực đều hợp lệ");
+
 				return (true, "OK");
 			}
 			catch (Exception ex)
@@ -1525,8 +1624,8 @@ namespace Aesthetics.Data.AestheticsServices
 					TotalMoney = servicePrice,
 					DiscountValue = discountValue,
 					FinalPrice = finalPrice,
-					PaidAmount = paidAmount,                           // ✅ LUÔN = 0 lúc tạo
-					OutstandingBalance = finalPrice - paidAmount,     // ✅ LUÔN = finalPrice lúc tạo
+					PaidAmount = paidAmount,                           
+					OutstandingBalance = finalPrice - paidAmount,     
 					DateCreated = DateTime.UtcNow,
 					Status = invoiceStatus,
 					Type = "DichVu",
@@ -1905,7 +2004,7 @@ namespace Aesthetics.Data.AestheticsServices
 				{
 					_logger.LogInformation("📍 CASE: Dịch vụ đơn lẻ - ServiceId={ServiceId}, CustomerId={CustomerId}",
 						request.serviceId, request.customerId);
-					return await UpdateSingleServiceAppointmentStatusAsync(request.customerId.Value, request.serviceId.Value, newStatus);
+					return await UpdateSingleServiceAppointmentStatusAsync(request.AppointmentId.Value, newStatus);
 				}
 			}
 			catch (Exception ex)
@@ -1916,125 +2015,80 @@ namespace Aesthetics.Data.AestheticsServices
 		}
 
 		/// <summary>
-		/// 🆕 Update status cho dịch vụ đơn lẻ - Filter theo customerId + serviceId
+		/// 🆕 Update status cho dịch vụ đơn lẻ - Filter theo AppointmentId
 		/// </summary>
-		private async Task<bool> UpdateSingleServiceAppointmentStatusAsync(int customerId, int serviceId, int newStatus)
+		private async Task<bool> UpdateSingleServiceAppointmentStatusAsync(int appointmentId, int newStatus)
 		{
 			try
 			{
-				_logger.LogInformation("[SINGLE_SERVICE] UPDATE_STATUS_START: CustomerId={CustomerId}, ServiceId={ServiceId}, Status={Status}",
-					customerId, serviceId, GetAppointmentStatusName(newStatus));
+				_logger.LogInformation("[SINGLE_SERVICE] UPDATE_STATUS_START: AppointmentId={AppointmentId}, Status={Status}",
+					appointmentId, GetAppointmentStatusName(newStatus));
 
-				// ✅ STEP 1: Kiểm tra customer tồn tại
-				var customer = await _customerRepository.GetById(customerId);
-				if (customer == null || customer.DeleteStatus)
+				// ✅ STEP 1: Lấy appointment cụ thể
+				var appointment = await _appointmentRepositoty.GetById(appointmentId);
+				if (appointment == null || appointment.DeleteStatus)
 				{
-					_logger.LogWarning("[SINGLE_SERVICE] CUSTOMER_NOT_FOUND: CustomerId={CustomerId}", customerId);
+					_logger.LogWarning("[SINGLE_SERVICE] APPOINTMENT_NOT_FOUND: AppointmentId={AppointmentId}", appointmentId);
 					return false;
 				}
 
-				_logger.LogInformation("[SINGLE_SERVICE] ✓ Customer validated: {CustomerName}", customer.FullName);
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ Appointment found: CustomerId={CustomerId}, ServiceId={ServiceId}, OldStatus={OldStatus}",
+					appointment.CustomerId, appointment.ServiceId, GetAppointmentStatusName(appointment.Status ?? 0));
 
-				// ✅ STEP 2: Kiểm tra service tồn tại
-				var service = await _serviceRepository.GetById(serviceId);
-				if (service == null || service.DeleteStatus)
+				// ✅ STEP 2: Update appointment status
+				int oldStatus = appointment.Status ?? 0;
+				appointment.Status = newStatus;
+
+				var updated = await _appointmentRepositoty.UpdateEntity(appointment);
+				if (!updated)
 				{
-					_logger.LogWarning("[SINGLE_SERVICE] SERVICE_NOT_FOUND: ServiceId={ServiceId}", serviceId);
+					_logger.LogWarning("[SINGLE_SERVICE] ⚠ Failed to update appointment: ID={Id}", appointment.Id);
 					return false;
 				}
 
-				// ✅ STEP 3: Check nếu là dịch vụ đơn lẻ (IsCourse != true)
-				if (service.IsCourse == true)
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ Appointment updated: ID={Id}, {OldStatus} → {NewStatus}",
+					appointment.Id, GetAppointmentStatusName(oldStatus), GetAppointmentStatusName(newStatus));
+
+				// ✅ STEP 3: Update AppointmentAssignment status
+				_logger.LogInformation("[SINGLE_SERVICE] Updating appointment assignment status");
+
+				var assignments = await _appointmentAssignmentRepository.FindByPredicate(x =>
+					x.AppointmentId == appointmentId && !x.DeleteStatus);
+
+				foreach (var assignment in assignments)
 				{
-					_logger.LogWarning("[SINGLE_SERVICE] SERVICE_IS_COURSE: ServiceId={ServiceId} là liệu trình, không phải dịch vụ đơn lẻ", serviceId);
-					return false;
+					assignment.Status = newStatus;
+					await _appointmentAssignmentRepository.UpdateEntity(assignment);
+					_logger.LogInformation("[SINGLE_SERVICE] ✓ Assignment updated: ID={Id}", assignment.Id);
 				}
 
-				_logger.LogInformation("[SINGLE_SERVICE] ✓ Service validated: {ServiceName}, IsCourse={IsCourse}",
-					service.ServiceName, service.IsCourse);
-
-				// ✅ STEP 4: Lấy tất cả appointments của customer CHO service này (chưa bị hủy)
-				// ⭐ QUAN TRỌNG: Filter theo CustomerId + ServiceId
-				var appointments = (await _appointmentRepositoty.FindByPredicate(x =>
-					x.CustomerId == customerId &&  // 🔑 Filter theo customer
-					x.ServiceId == serviceId &&     // 🔑 Filter theo service
-					!x.DeleteStatus &&
-					x.Status != (int)AppointmentStatus.Cancelled))
-					.ToList();
-
-				_logger.LogInformation("[SINGLE_SERVICE] Found {Count} appointments for CustomerId={CustomerId}, ServiceId={ServiceId}",
-					appointments.Count, customerId, serviceId);
-
-				if (!appointments.Any())
+				// ✅ STEP 4: Create PerformanceLog if completed
+				if (newStatus == 3 && appointment.StaffId.HasValue)
 				{
-					_logger.LogWarning("[SINGLE_SERVICE] NO_APPOINTMENTS_FOUND: Không tìm thấy appointment nào");
-					return false;
-				}
+					_logger.LogInformation("[SINGLE_SERVICE] 🔥 STATUS_COMPLETED: Appointment hoàn thành - AppointmentId={AppointmentId}, StaffId={StaffId}",
+						appointment.Id, appointment.StaffId.Value);
 
-				// ✅ STEP 5: Cập nhật status của tất cả appointments
-				int updatedCount = 0;
-				foreach (var appointment in appointments)
-				{
-					try
+					bool performanceLogCreated = await CreatePerformanceLogAsync(appointment.Id, appointment.StaffId.Value);
+					if (performanceLogCreated)
 					{
-						int oldStatus = appointment.Status ?? 0;
-						appointment.Status = newStatus;
-
-						var updated = await _appointmentRepositoty.UpdateEntity(appointment);
-						if (updated)
-						{
-							updatedCount++;
-							_logger.LogInformation("[SINGLE_SERVICE] ✓ Appointment updated: ID={Id}, {OldStatus} → {NewStatus}",
-								appointment.Id, GetAppointmentStatusName(oldStatus), GetAppointmentStatusName(newStatus));
-
-							// ✅ STEP 5.1: Update AppointmentAssignment status nếu có
-							var assignments = await _appointmentAssignmentRepository.FindByPredicate(x =>
-								x.AppointmentId == appointment.Id && !x.DeleteStatus);
-
-							foreach (var assignment in assignments)
-							{
-								assignment.Status = newStatus;
-								await _appointmentAssignmentRepository.UpdateEntity(assignment);
-								_logger.LogInformation("[SINGLE_SERVICE] ✓ Assignment updated: ID={Id}", assignment.Id);
-							}
-
-							if (newStatus == 3 && appointment.StaffId.HasValue)
-							{
-								_logger.LogInformation("[SINGLE_SERVICE] 🔥 STATUS_COMPLETED: Appointment hoàn thành - AppointmentId={AppointmentId}, StaffId={StaffId}",
-									appointment.Id, appointment.StaffId.Value);
-
-								bool performanceLogCreated = await CreatePerformanceLogAsync(appointment.Id, appointment.StaffId.Value);
-								if (performanceLogCreated)
-								{
-									_logger.LogInformation("[SINGLE_SERVICE] ✅ PerformanceLog created: AppointmentId={AppointmentId}, StaffId={StaffId}",
-										appointment.Id, appointment.StaffId.Value);
-								}
-								else
-								{
-									_logger.LogWarning("[SINGLE_SERVICE] ⚠️ Failed to create PerformanceLog: AppointmentId={AppointmentId}, StaffId={StaffId}",
-										appointment.Id, appointment.StaffId.Value);
-								}
-							}
-						}
-						else
-						{
-							_logger.LogWarning("[SINGLE_SERVICE] ⚠ Failed to update appointment: ID={Id}", appointment.Id);
-						}
+						_logger.LogInformation("[SINGLE_SERVICE] ✅ PerformanceLog created: AppointmentId={AppointmentId}, StaffId={StaffId}",
+							appointment.Id, appointment.StaffId.Value);
 					}
-					catch (Exception ex)
+					else
 					{
-						_logger.LogError(ex, "[SINGLE_SERVICE] Error updating appointment: ID={Id}", appointment.Id);
+						_logger.LogWarning("[SINGLE_SERVICE] ⚠️ Failed to create PerformanceLog: AppointmentId={AppointmentId}, StaffId={StaffId}",
+							appointment.Id, appointment.StaffId.Value);
 					}
 				}
 
-				_logger.LogInformation("[SINGLE_SERVICE] ✓ UPDATE_SUCCESS: Updated {UpdatedCount}/{TotalCount} appointments",
-					updatedCount, appointments.Count);
+				_logger.LogInformation("[SINGLE_SERVICE] ✓ UPDATE_SUCCESS: Appointment status updated successfully");
 
-				return updatedCount > 0;
+				return true;
 			}
 			catch (Exception ex)
 			{
-				_logger.LogError(ex, "[SINGLE_SERVICE] UPDATE_EXCEPTION: Exception in UpdateSingleServiceAppointmentStatusAsync");
+				_logger.LogError(ex, "[SINGLE_SERVICE] UPDATE_EXCEPTION: Exception in UpdateSingleServiceAppointmentStatusAsync - AppointmentId={AppointmentId}",
+					appointmentId);
 				return false;
 			}
 		}

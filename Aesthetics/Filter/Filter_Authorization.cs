@@ -2,6 +2,7 @@
 using Aesthetics.Data.AestheticsInterfaces.TokenService;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 
 namespace ASP_NetCore_Aesthetics.Filter
@@ -31,64 +32,61 @@ namespace ASP_NetCore_Aesthetics.Filter
 
 		public async Task OnAuthorizationAsync(AuthorizationFilterContext context)
 		{
-			//Đọc thông tin từ claims 
-			var identity = context.HttpContext.User.Identity as ClaimsIdentity;
-			if (identity != null)
+			// Lấy token từ header
+			var authHeader = context.HttpContext.Request.Headers["Authorization"].FirstOrDefault();
+			if (string.IsNullOrEmpty(authHeader) || !authHeader.StartsWith("Bearer "))
 			{
-				var userClaims = identity.Claims;
-				var userId = userClaims.FirstOrDefault(x => x.Type == ClaimTypes.PrimarySid)?.Value != null
-					? Convert.ToInt32(userClaims.FirstOrDefault(x => x.Type == ClaimTypes.PrimarySid)?.Value) : 0;
+				SetUnauthorizedResponse(context, "Vui lòng đăng nhập để thực hiện chức năng này");
+				return;
+			}
 
-				if (userId == 0)
+			var token = authHeader.Replace("Bearer ", "");
+
+			try
+			{
+				// Decode JWT token để lấy claims
+				var handler = new JwtSecurityTokenHandler();
+				var jwtToken = handler.ReadJwtToken(token);
+				var userId = jwtToken.Claims.FirstOrDefault(x => x.Type == ClaimTypes.PrimarySid)?.Value;
+
+				if (string.IsNullOrEmpty(userId) || !int.TryParse(userId, out int userIdInt) || userIdInt == 0)
 				{
-					context.HttpContext.Response.ContentType = "application/json";
-					context.HttpContext.Response.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
-					context.Result = new JsonResult(new
-					{
-						ReturnCode = System.Net.HttpStatusCode.Unauthorized,
-						ReturnMessage = "Vui lòng đăng nhập để thực hiện chức năng này "
-					});
+					SetUnauthorizedResponse(context, "Vui lòng đăng nhập để thực hiện chức năng này");
 					return;
 				}
 
-				//Lấy FunctionID dựa theo FunctionCode
+				// Lấy FunctionID dựa theo FunctionCode
 				var function = await _accountRepository.GetFunctionIDByName(_functionCode);
 				if (function == null)
 				{
-					context.HttpContext.Response.ContentType = "application/json";
-					context.HttpContext.Response.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
-					context.Result = new JsonResult(new
-					{
-						ReturnCode = System.Net.HttpStatusCode.Unauthorized,
-						ReturnMessage = "Chức năng này không hợp lệ"
-					});
+					SetUnauthorizedResponse(context, "Chức năng này không hợp lệ");
 					return;
 				}
 
-				var permisstion = await _accountRepository.GetPermisstionUserIDOfFunctionID(userId, function.Id);
-				if (permisstion == null)
+				// Kiểm tra quyền
+				var permission = await _accountRepository.GetPermisstionUserIDOfFunctionID(userIdInt, function.Id);
+				if (permission == null || permission.IsActive == false)
 				{
-					context.HttpContext.Response.ContentType = "application/json";
-					context.HttpContext.Response.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
-					context.Result = new JsonResult(new
-					{
-						ReturnCode = System.Net.HttpStatusCode.Unauthorized,
-						ReturnMessage = "Bạn không có quyền thực hiện chức năng này"
-					});
-					return;
-				}
-				if (permisstion.IsActive == true)
-				{
-					context.HttpContext.Response.ContentType = "application/json";
-					context.HttpContext.Response.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
-					context.Result = new JsonResult(new
-					{
-						ReturnCode = System.Net.HttpStatusCode.Unauthorized,
-						ReturnMessage = "Bạn không có quyền thực hiện chức năng này"
-					});
+					SetUnauthorizedResponse(context, "Bạn không có quyền thực hiện chức năng này");
 					return;
 				}
 			}
+			catch (Exception ex)
+			{
+				SetUnauthorizedResponse(context, "Token không hợp lệ");
+				return;
+			}
+		}
+
+		private void SetUnauthorizedResponse(AuthorizationFilterContext context, string message)
+		{
+			context.HttpContext.Response.ContentType = "application/json";
+			context.HttpContext.Response.StatusCode = (int)System.Net.HttpStatusCode.Unauthorized;
+			context.Result = new JsonResult(new
+			{
+				ReturnCode = System.Net.HttpStatusCode.Unauthorized,
+				ReturnMessage = message
+			});
 		}
 	}
 }

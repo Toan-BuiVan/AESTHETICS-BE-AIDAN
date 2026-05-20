@@ -2,6 +2,7 @@ using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_customerTreatmentPlansService = customerTreatmentPlansService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createcustomertreatmentplan")]
 		[HttpPost("createcustomertreatmentplan")]
 		public async Task<IActionResult> Create([FromBody] CreateCustomerTreatment treatment)
 		{
@@ -25,6 +28,8 @@ namespace Aesthetics.Controllers
 			return Ok( result );
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updatecustomertreatmentplan")]
 		[HttpPost("updatecustomertreatmentplan")]
 		public async Task<IActionResult> Update([FromBody] UpdateCustomerTreatment treatment)
 		{
@@ -32,6 +37,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("deletecustomertreatmentplan")]
 		[HttpPost("deletecustomertreatmentplan")]
 		public async Task<IActionResult> Delete([FromBody] DeleteCustomerTreatment treatment)
 		{
@@ -39,6 +46,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getcustomertreatmentplanlist")]
 		[HttpPost("getcustomertreatmentplanlist")]
 		public async Task<IActionResult> GetList([FromBody] GetCustomerTreatment treatment)
 		{

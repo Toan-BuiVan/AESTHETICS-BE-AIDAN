@@ -34,9 +34,9 @@ namespace Aesthetics.Data.RepositoryServices
 					await _dbContext.SaveChangesAsync();
 				}
 			}
-			catch
+			catch(Exception ex)
 			{
-				throw new Exception($"Không tìm thấy người dùng có mã: {userId}");
+				throw new Exception($"Lỗi: {ex}");
 			}
 		}
 	}

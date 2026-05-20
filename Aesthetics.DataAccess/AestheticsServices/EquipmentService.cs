@@ -94,7 +94,7 @@ namespace Aesthetics.Data.AestheticsServices
 		{
 			try
 			{
-				Expression<Func<EquipmentEntity, bool>> predicate = x => true;
+				Expression<Func<EquipmentEntity, bool>> predicate = x => x.DeleteStatus != true;
 
 				if (!string.IsNullOrWhiteSpace(searchEquipment.EquipmentName))
 				{

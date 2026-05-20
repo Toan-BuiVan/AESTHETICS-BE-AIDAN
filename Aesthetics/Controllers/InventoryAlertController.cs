@@ -2,6 +2,7 @@ using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_inventoryAlertService = inventoryAlertService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createinventoryalert")]
 		[HttpPost("createinventoryalert")]
 		public async Task<IActionResult> CreateLowStockAlert(int productId, int currentQuantity, int minimumStock)
 		{
@@ -25,6 +28,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("sendinventoryalertemails")]
 		[HttpPost("sendinventoryalertemails")]
 		public async Task<IActionResult> SendPendingAlertEmails()
 		{
@@ -32,6 +37,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("cleanupoldinventoryalerts")]
 		[HttpPost("cleanupoldinventoryalerts")]
 		public async Task<IActionResult> CleanupOldAlerts()
 		{

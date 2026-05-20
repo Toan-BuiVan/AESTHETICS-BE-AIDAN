@@ -8,7 +8,6 @@ using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.Extensions.Logging;
 using System;
 using System.Collections.Generic;
-using System.Data.Entity.Infrastructure;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Runtime.CompilerServices;
@@ -112,17 +111,54 @@ namespace Aesthetics.Data.RepositoryServices.Common
 
 		}
 
-		public async Task<bool> DeleteRangeEntitiesStatus(T entity) 
+		//public async Task<bool> DeleteRangeEntitiesStatus(T entity) 
+		//{
+		//	try
+		//	{
+		//		var trackedEntity = await _dbContext.Set<T>().FindAsync(entity.Id);
+		//		if (trackedEntity == null)
+		//			return false;
+
+		//		trackedEntity.DeleteStatus = true;
+
+		//		var entry = _dbContext.Entry(trackedEntity);
+		//		var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
+		//		await SoftDeleteAsync(entry, visited);
+
+		//		await _dbContext.SaveChangesAsync();
+		//		_logger.LogInformation("Soft Delete {Entity} - Id: {Id}", typeof(T).Name, entity.Id);
+		//		return true;
+		//	}
+		//	catch (Exception ex)
+		//	{
+		//		_logger.LogError(ex, "Soft Delete {Entity} - Id: {Id}", typeof(T).Name, entity.Id);
+		//		return false;
+		//	}
+		//}
+
+		public async Task<bool> DeleteRangeEntitiesStatus(T entity)
 		{
 			try
 			{
-				var trackedEntity = await _dbContext.Set<T>().FindAsync(entity.Id);
-				if (trackedEntity == null)
+				// Kiểm tra entity có null không
+				if (entity == null || entity.Id == 0)
+				{
+					_logger.LogWarning("DeleteRangeEntitiesStatus: Entity null hoặc Id = 0");
 					return false;
+				}
 
-				trackedEntity.DeleteStatus = true;
+				// Kiểm tra entity đã được tracked chưa
+				var entry = _dbContext.Entry(entity);
 
-				var entry = _dbContext.Entry(trackedEntity);
+				// Nếu entity là Detached, attach nó
+				if (entry.State == EntityState.Detached)
+				{
+					_dbContext.Attach(entity);
+					entry = _dbContext.Entry(entity);
+				}
+
+				entity.DeleteStatus = true;
+
 				var visited = new HashSet<object>(ReferenceEqualityComparer.Instance);
 				await SoftDeleteAsync(entry, visited);
 
@@ -137,12 +173,91 @@ namespace Aesthetics.Data.RepositoryServices.Common
 			}
 		}
 
+		//private async Task SoftDeleteAsync(EntityEntry entry, HashSet<object> visited)
+		//{
+		//	if (entry.Entity == null || !visited.Add(entry.Entity))
+		//		return;
+
+		//	var entityType = entry.Entity.GetType().Name;
+
+		//	// Soft delete entity hiện tại (trừ Invoice và InvoiceDetail)
+		//	if (entry.Entity is BaseEntity baseEntity &&
+		//		entry.Entity is not InvoiceEntity &&
+		//		entry.Entity is not InvoiceDetailEntity)
+		//	{
+		//		baseEntity.DeleteStatus = true;
+		//	}
+
+		//	// Nếu entity nằm trong NoCascadeTypes, dừng cascading
+		//	if (CascadeDeleteConfiguration.NoCascadeTypes.Contains(entityType))
+		//	{
+		//		return;
+		//	}
+
+		//	// Lấy danh sách child entities được phép cascading
+		//	var allowedChildren = CascadeDeleteConfiguration.GetAllowedChildren(entityType);
+
+		//	// Nếu entity không có rule cascading, dừng tại đây
+		//	if (allowedChildren == null || allowedChildren.Count == 0)
+		//	{
+		//		return;
+		//	}
+
+		//	// Load tất cả navigations trước khi xử lý
+		//	foreach (var navigation in entry.Navigations.Where(n => n.Metadata.IsCollection))
+		//	{
+		//		try
+		//		{
+		//			await navigation.LoadAsync();
+		//		}
+		//		catch
+		//		{
+		//			// Skip nếu không thể load
+		//		}
+		//	}
+
+		//	foreach (var navigation in entry.Navigations)
+		//	{
+		//		var childEntityType = navigation.Metadata.TargetEntityType.Name;
+
+		//		// Chỉ xử lý navigations được phép cascading
+		//		if (!allowedChildren.Contains(childEntityType))
+		//			continue;
+
+		//		// Kiểm tra lại với hàm helper
+		//		if (!CascadeDeleteConfiguration.IsAllowedCascade(entityType, childEntityType))
+		//			continue;
+
+		//		// Đảm bảo navigation đã được load
+		//		if (navigation.CurrentValue == null)
+		//		{
+		//			await navigation.LoadAsync();
+		//		}
+
+		//		if (navigation.CurrentValue is IEnumerable<object> collection)
+		//		{
+		//			var items = collection.ToList();
+		//			foreach (var child in items)
+		//			{
+		//				var childEntry = _dbContext.Entry(child);
+		//				await SoftDeleteAsync(childEntry, visited);
+		//			}
+		//		}
+		//		else if (navigation.CurrentValue != null)
+		//		{
+		//			var childEntry = _dbContext.Entry(navigation.CurrentValue);
+		//			await SoftDeleteAsync(childEntry, visited);
+		//		}
+		//	}
+		//}
+
 		private async Task SoftDeleteAsync(EntityEntry entry, HashSet<object> visited)
 		{
 			if (entry.Entity == null || !visited.Add(entry.Entity))
 				return;
 
 			var entityType = entry.Entity.GetType().Name;
+			_logger.LogInformation("🔄 Processing cascade delete for: {EntityType} (Id: {Id})", entityType, ((BaseEntity)entry.Entity)?.Id ?? 0);
 
 			// Soft delete entity hiện tại (trừ Invoice và InvoiceDetail)
 			if (entry.Entity is BaseEntity baseEntity &&
@@ -150,11 +265,13 @@ namespace Aesthetics.Data.RepositoryServices.Common
 				entry.Entity is not InvoiceDetailEntity)
 			{
 				baseEntity.DeleteStatus = true;
+				_logger.LogInformation("✅ Set DeleteStatus = true for {EntityType}", entityType);
 			}
 
 			// Nếu entity nằm trong NoCascadeTypes, dừng cascading
 			if (CascadeDeleteConfiguration.NoCascadeTypes.Contains(entityType))
 			{
+				_logger.LogInformation("⛔ {EntityType} is in NoCascadeTypes - stopping cascade", entityType);
 				return;
 			}
 
@@ -164,26 +281,61 @@ namespace Aesthetics.Data.RepositoryServices.Common
 			// Nếu entity không có rule cascading, dừng tại đây
 			if (allowedChildren == null || allowedChildren.Count == 0)
 			{
+				_logger.LogInformation("⛔ No cascade rules defined for {EntityType}", entityType);
 				return;
+			}
+
+			_logger.LogInformation("📋 Allowed children for {EntityType}: {Children}", entityType, string.Join(", ", allowedChildren));
+
+			// Load tất cả navigations trước khi xử lý
+			foreach (var navigation in entry.Navigations.Where(n => n.Metadata.IsCollection))
+			{
+				try
+				{
+					_logger.LogInformation("📥 Loading collection navigation: {NavigationName}", navigation.Metadata.Name);
+					await navigation.LoadAsync();
+				}
+				catch (Exception ex)
+				{
+					_logger.LogWarning(ex, "⚠️ Failed to load navigation: {NavigationName}", navigation.Metadata.Name);
+				}
 			}
 
 			foreach (var navigation in entry.Navigations)
 			{
-				var childEntityType = navigation.Metadata.TargetEntityType.Name;
+				// ✅ Lấy chỉ class name, bỏ namespace
+				var clrType = navigation.Metadata.TargetEntityType.ClrType;
+				var childEntityType = clrType?.Name ?? navigation.Metadata.TargetEntityType.Name;
+
+				_logger.LogInformation("🔍 Checking navigation: {NavName} -> {ChildType}", navigation.Metadata.Name, childEntityType);
 
 				// Chỉ xử lý navigations được phép cascading
 				if (!allowedChildren.Contains(childEntityType))
+				{
+					_logger.LogInformation("❌ {ChildType} not in allowed children for {ParentType}", childEntityType, entityType);
 					continue;
+				}
 
 				// Kiểm tra lại với hàm helper
 				if (!CascadeDeleteConfiguration.IsAllowedCascade(entityType, childEntityType))
+				{
+					_logger.LogInformation("❌ IsAllowedCascade check failed for {ParentType} -> {ChildType}", entityType, childEntityType);
 					continue;
+				}
 
-				await navigation.LoadAsync();
+				// Đảm bảo navigation đã được load
+				if (navigation.CurrentValue == null)
+				{
+					_logger.LogInformation("📥 CurrentValue is null, loading navigation: {NavName}", navigation.Metadata.Name);
+					await navigation.LoadAsync();
+				}
 
 				if (navigation.CurrentValue is IEnumerable<object> collection)
 				{
-					foreach (var child in collection)
+					var items = collection.ToList();
+					_logger.LogInformation("✔️ Found {Count} {ChildType} items to cascade delete", items.Count, childEntityType);
+
+					foreach (var child in items)
 					{
 						var childEntry = _dbContext.Entry(child);
 						await SoftDeleteAsync(childEntry, visited);
@@ -191,6 +343,7 @@ namespace Aesthetics.Data.RepositoryServices.Common
 				}
 				else if (navigation.CurrentValue != null)
 				{
+					_logger.LogInformation("✔️ Found 1 {ChildType} item to cascade delete", childEntityType);
 					var childEntry = _dbContext.Entry(navigation.CurrentValue);
 					await SoftDeleteAsync(childEntry, visited);
 				}
@@ -223,6 +376,20 @@ namespace Aesthetics.Data.RepositoryServices.Common
 			catch (Exception ex)
 			{
 				_logger.LogError(ex, "Entity {Na} - GetById: {Id} - Exception: {E}", nameEntity, id, ex);
+				return null;
+			}
+		}
+
+		public async Task<T?> GetByIdForDelete(int id)
+		{
+			try
+			{
+				return await _dbContext.Set<T>()
+					.FirstOrDefaultAsync(x => x.Id == id); 
+			}
+			catch (Exception ex)
+			{
+				_logger.LogError(ex, "Entity {Na} - GetByIdForDelete: {Id} - Exception: {E}", nameEntity, id, ex);
 				return null;
 			}
 		}

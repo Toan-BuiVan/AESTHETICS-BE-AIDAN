@@ -2,6 +2,7 @@ using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_appointmentTimeLockService = appointmentTimeLockService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createappointmenttimelock")]
 		[HttpPost("createappointmenttimelock")]
 		public async Task<IActionResult> Create([FromBody] CreateAppointmentTimeLock timeLock)
 		{
@@ -25,6 +28,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updateappointmenttimelock")]
 		[HttpPost("updateappointmenttimelock")]
 		public async Task<IActionResult> Update([FromBody] UpdateAppointmentTimeLock timeLock)
 		{
@@ -32,6 +37,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("deleteappointmenttimelock")]
 		[HttpPost("deleteappointmenttimelock")]
 		public async Task<IActionResult> Delete([FromBody] DeleteAppointmentTimeLock timeLock)
 		{
@@ -39,6 +46,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getappointmenttimelockList")]
 		[HttpPost("getappointmenttimelockList")]
 		public async Task<IActionResult> GetList([FromBody] GetAppointmentTimeLock timeLock)
 		{

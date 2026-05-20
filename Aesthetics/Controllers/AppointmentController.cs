@@ -2,6 +2,7 @@
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_appointmentService = appointmentService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createappointment")]
 		[HttpPost("createappointment")]
 		public async Task<IActionResult> Create([FromBody] CreateAppointment appointment)
 		{
@@ -25,6 +28,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updateappointmentstatus")]
 		[HttpPost("updateappointmentstatus")]
 		public async Task<IActionResult> updateappointmentstatusasync([FromBody] updateappoint appointment)
 		{
@@ -32,6 +37,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("deleteappointment")]
 		[HttpPost("deleteappointment")]
 		public async Task<IActionResult> Delete([FromBody] DeleteAppointment appointment)
 		{
@@ -39,6 +46,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getappointmentlist")]
 		[HttpPost("getappointmentlist")]
 		public async Task<IActionResult> GetList([FromBody] AppointmentGet appointment)
 		{
@@ -46,6 +55,8 @@ namespace Aesthetics.Controllers
 			return Ok(result);
 		}
 
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getdoctoravailability")]
 		[HttpPost("getdoctoravailability")]
 		public async Task<IActionResult> getdoctoravailability([FromBody] GetDoctorAvailabilityRequest appointment)
 		{
@@ -53,6 +64,8 @@ namespace Aesthetics.Controllers
 			return Ok(result);
 		}
 
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("createappointment")]
 		[HttpGet("getdoctorservices/{doctorId}")]
 		public async Task<IActionResult> GetDoctorServices(int doctorId)
 		{

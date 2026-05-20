@@ -19,6 +19,8 @@ namespace Aesthetics.Controllers
 			_clinicService = clinicService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createclinic")]
 		[HttpPost("createclinic")]
 		public async Task<IActionResult> Create([FromBody] RequestClinic clinic)
 		{
@@ -26,6 +28,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updateclinic")]
 		[HttpPost("updateclinic")]
 		public async Task<IActionResult> Update([FromBody] UpdateClinic clinic)
 		{
@@ -33,6 +37,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("deleteclinic")]
 		[HttpPost("deleteclinic")]
 		public async Task<IActionResult> Delete([FromBody] DeleteClinic clinic)
 		{
@@ -40,8 +46,6 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
-		[ServiceFilter(typeof(Filter_CheckToken))]
-		//[Filter_Authorization("getclinielist")]
 		[HttpPost("getclinielist")]
 		public async Task<IActionResult> GetList([FromBody] ClinicGet clinic)
 		{

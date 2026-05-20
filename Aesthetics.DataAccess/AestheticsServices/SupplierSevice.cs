@@ -39,6 +39,7 @@ namespace Aesthetics.Data.AestheticsServices
 					SupplierName = supplier.SupplierName,
 					Address = supplier.Address.Trim(),
 					Phone = supplier.Phone.Trim(),
+					Email = supplier.Email,
 					DeleteStatus = false
 				};
 				var created = await _supplierRepository.CreateEntity(entity);
@@ -92,6 +93,11 @@ namespace Aesthetics.Data.AestheticsServices
 				if (!string.IsNullOrWhiteSpace(searchSupplier.SupplierName))
 				{
 					predicate = x => x.SupplierName.ToLower().Contains(searchSupplier.SupplierName.ToLower());
+				}
+
+				if (searchSupplier.Id.HasValue)
+				{
+					predicate = x => x.Id.Equals(searchSupplier.Id);
 				}
 
 				var allMatching = await _supplierRepository.FindByPredicate(predicate);
@@ -150,6 +156,7 @@ namespace Aesthetics.Data.AestheticsServices
 				}
 
 				existingSupplier.SupplierName = supplier.SupplierName;
+				existingSupplier.Email = supplier.Email;
 				existingSupplier.Address = supplier.Address.Trim();
 				existingSupplier.Phone = supplier.Phone.Trim();
 

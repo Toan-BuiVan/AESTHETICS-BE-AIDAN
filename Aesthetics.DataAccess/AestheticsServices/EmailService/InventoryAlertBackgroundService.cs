@@ -45,7 +45,6 @@ namespace Aesthetics.Data.AestheticsServices.EmailService
 					_logger.LogError(ex, "🔴 InventoryAlertBackgroundService: Exception occurred");
 				}
 
-				// Chạy mỗi 2 giờ (có thể chỉnh thành 1, 2, 3 giờ tùy ý)
 				await Task.Delay(TimeSpan.FromHours(2), stoppingToken);
 			}
 		}

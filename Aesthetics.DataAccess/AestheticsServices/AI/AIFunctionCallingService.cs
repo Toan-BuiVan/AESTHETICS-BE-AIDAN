@@ -615,7 +615,8 @@ namespace Aesthetics.Data.AestheticsServices.AI
 		{
 			try
 			{
-				var customerId = Convert.ToInt32(@params["customerId"]);
+				//var customerId = Convert.ToInt32(@params["customerId"]);
+				var customerId = userId;
 				var staffId = Convert.ToInt32(@params["staffId"]);
 				var serviceId = Convert.ToInt32(@params["serviceId"]);
 				var appointmentDateStr = @params["appointmentDate"].ToString();

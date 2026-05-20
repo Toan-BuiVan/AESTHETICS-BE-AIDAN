@@ -2,6 +2,7 @@ using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_serviceTypeService = serviceTypeService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createservicetype")]
 		[HttpPost("createservicetype")]
 		public async Task<IActionResult> Create([FromBody] RequestServiceType serviceType)
 		{
@@ -25,6 +28,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updateservicetype")]
 		[HttpPost("updateservicetype")]
 		public async Task<IActionResult> Update([FromBody] UpdateServiceType serviceType)
 		{
@@ -32,6 +37,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("deleteservicetype")]
 		[HttpPost("deleteservicetype")]
 		public async Task<IActionResult> Delete([FromBody] DeleteServiceType serviceType)
 		{

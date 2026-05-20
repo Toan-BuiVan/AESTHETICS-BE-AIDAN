@@ -1,6 +1,7 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using System;
@@ -25,19 +26,13 @@ namespace Aesthetics.Controllers
             _statisticsService = statisticsService;
         }
 
-        #endregion
+		#endregion
 
-        #region Public Endpoints
+		#region Public Endpoints
 
-        /// <summary>
-        /// 📊 Lấy thống kê toàn diện theo khoảng thời gian
-        /// Get comprehensive monthly statistics for a date range
-        /// 
-        /// POST: /api/statistics/getmonthlystatistics
-        /// </summary>
-        /// <param name="request">Yêu cầu chứa StartDate và EndDate</param>
-        /// <returns>Thống kê chi tiết bao gồm voucher, bác sĩ, sản phẩm, dịch vụ</returns>
-        [HttpPost("getmonthlystatistics")]
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getmonthlystatistics")]
+		[HttpPost("getmonthlystatistics")]
         public async Task<IActionResult> GetMonthlyStatistics([FromBody] DateRangeStatisticsRequest request)
         {
             try
@@ -91,13 +86,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// 🎟️ Lấy thống kê voucher sử dụng nhiều nhất
-        /// Get top vouchers used in a date range
-        /// 
-        /// POST: /api/statistics/gettopvouchersused
-        /// </summary>
-        [HttpPost("gettopvouchersused")]
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("gettopvouchersused")]
+		[HttpPost("gettopvouchersused")]
         public async Task<IActionResult> GetTopVouchersUsed([FromBody] DateRangeStatisticsRequest request)
         {
             try
@@ -131,13 +122,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// 👨‍⚕️ Lấy thống kê bác sĩ có KPI tốt nhất
-        /// Get top doctors by KPI (commission + bonus)
-        /// 
-        /// POST: /api/statistics/gettopdoctorsbykpi
-        /// </summary>
-        [HttpPost("gettopdoctorsbykpi")]
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("gettopdoctorsbykpi")]
+		[HttpPost("gettopdoctorsbykpi")]
         public async Task<IActionResult> GetTopDoctorsByKPI([FromBody] DateRangeStatisticsRequest request)
         {
             try
@@ -171,13 +158,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// 📦 Lấy thống kê sản phẩm bán chạy nhất
-        /// Get top selling products
-        /// 
-        /// POST: /api/statistics/gettopsellingproducts
-        /// </summary>
-        [HttpPost("gettopsellingproducts")]
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("gettopsellingproducts")]
+		[HttpPost("gettopsellingproducts")]
         public async Task<IActionResult> GetTopSellingProducts([FromBody] DateRangeStatisticsRequest request)
         {
             try
@@ -211,13 +194,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// 🎯 Lấy thống kê dịch vụ có nhiều người dùng nhất
-        /// Get top popular services
-        /// 
-        /// POST: /api/statistics/gettoppopularservices
-        /// </summary>
-        [HttpPost("gettoppopularservices")]
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("gettoppopularservices")]
+		[HttpPost("gettoppopularservices")]
         public async Task<IActionResult> GetTopPopularServices([FromBody] DateRangeStatisticsRequest request)
         {
             try
@@ -251,13 +230,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// ⭐ Lấy thống kê bác sĩ có đánh giá tốt nhất
-        /// Get top doctors by rating (5-star, average rating)
-        /// 
-        /// POST: /api/statistics/gettopdoctorsbyrating
-        /// </summary>
-        [HttpPost("gettopdoctorsbyrating")]
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("gettopdoctorsbyrating")]
+		[HttpPost("gettopdoctorsbyrating")]
         public async Task<IActionResult> GetTopDoctorsByRating([FromBody] DateRangeStatisticsRequest request)
         {
             try
@@ -291,13 +266,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// 💼 Lấy thống kê nhân viên bán hàng tốt nhất
-        /// Get top sales staff by revenue
-        /// 
-        /// POST: /api/statistics/gettopsalesstaff
-        /// </summary>
-        [HttpPost("gettopsalesstaff")]
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("gettopsalesstaff")]
+		[HttpPost("gettopsalesstaff")]
         public async Task<IActionResult> GetTopSalesStaff([FromBody] DateRangeStatisticsRequest request)
         {
             try
@@ -331,13 +302,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// 📈 Lấy thống kê tổng hợp
-        /// Get summary statistics (total revenue, total invoices, etc.)
-        /// 
-        /// POST: /api/statistics/getstatisticssummary
-        /// </summary>
-        [HttpPost("getstatisticssummary")]
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getstatisticssummary")]
+		[HttpPost("getstatisticssummary")]
         public async Task<IActionResult> GetStatisticsSummary([FromBody] DateRangeStatisticsRequest request)
         {
             try
@@ -370,11 +337,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// ✅ Thống kê doanh thu theo ngày
-        /// GET: api/statistics/daily-revenue
-        /// </summary>
-        [HttpPost("daily-revenue")]
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("daily-revenue")]
+		[HttpPost("daily-revenue")]
         public async Task<IActionResult> GetDailyRevenueStatistics([FromBody] DailyRevenueStatisticsRequest request)
         {
             try

@@ -110,9 +110,28 @@ namespace Aesthetics.Data.AestheticsServices
 				DateTime currentDate = DateTime.UtcNow;
 				var allMatching = await _voucherRepository.FindByPredicate(x =>
 					x.DeleteStatus == false &&
-					x.IsActive == true &&
-					(x.StartDate == null || x.StartDate <= currentDate) &&
-					(x.EndDate == null || x.EndDate >= currentDate));
+					x.IsActive == true);
+
+				if (voucher.StartDate.HasValue || voucher.EndDate.HasValue)
+				{
+					var startDate = voucher.StartDate ?? DateTime.MinValue;
+					var endDate = voucher.EndDate ?? DateTime.MaxValue;
+
+					allMatching = allMatching
+						.Where(x =>
+							(x.StartDate == null || x.StartDate <= endDate) &&
+							(x.EndDate == null || x.EndDate >= startDate))
+						.ToList();
+				}
+				else
+				{
+					// Default: only show currently valid vouchers (within date range)
+					allMatching = allMatching
+						.Where(x =>
+							(x.StartDate == null || x.StartDate <= currentDate) &&
+							(x.EndDate == null || x.EndDate >= currentDate))
+						.ToList();
+				}
 
 				if (!string.IsNullOrWhiteSpace(voucher.Code))
 				{

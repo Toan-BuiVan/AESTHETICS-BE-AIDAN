@@ -1,5 +1,6 @@
 ﻿using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Models.RequestModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.Extensions.Logging;
 using System;
@@ -22,11 +23,9 @@ namespace Aesthetics.Controllers
             _refundService = refundService;
         }
 
-        /// <summary>
-        /// ✅ Tạo yêu cầu hoàn tiền mới
-        /// POST: api/refund/create
-        /// </summary>
-        [HttpPost("createrefund")]
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createrefund")]
+		[HttpPost("createrefund")]
         public async Task<IActionResult> CreateRefund([FromBody] CreateRefundModel request)
         {
             try
@@ -75,10 +74,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// ✅ Cập nhật trạng thái hoàn tiền
-        /// </summary>
-        [HttpPost("updatestatusrefund")]
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updatestatusrefund")]
+		[HttpPost("updatestatusrefund")]
         public async Task<IActionResult> UpdateRefundStatus([FromBody] UpdtaeRefundModel request)
         {
             try
@@ -127,10 +125,9 @@ namespace Aesthetics.Controllers
             }
         }
 
-        /// <summary>
-        /// ✅ Lấy danh sách yêu cầu hoàn tiền với filter và phân trang
-        /// </summary>
-        [HttpPost("getlistrefund")]
+		//[ServiceFilter(typeof(Filter_CheckToken))]
+		//[Filter_Authorization("getlistrefund")]
+		[HttpPost("getlistrefund")]
         public async Task<IActionResult> GetRefundList([FromBody] getlist request)
         {
             try

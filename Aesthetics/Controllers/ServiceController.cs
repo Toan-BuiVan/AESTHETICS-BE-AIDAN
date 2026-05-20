@@ -2,6 +2,7 @@ using Aesthetics.Data.AestheticsInterfaces;
 using Aesthetics.Entities.Entities;
 using Aesthetics.Entities.Models.RequestModel;
 using Aesthetics.Entities.Models.ResponseModel;
+using ASP_NetCore_Aesthetics.Filter;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -18,6 +19,8 @@ namespace Aesthetics.Controllers
 			_servicesService = servicesService;
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("createservice")]
 		[HttpPost("createservice")]
 		public async Task<IActionResult> Create([FromBody] CreateService service)
 		{
@@ -25,6 +28,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("updateservice")]
 		[HttpPost("updateservice")]
 		public async Task<IActionResult> Update([FromBody] UpdateService service)
 		{
@@ -32,6 +37,8 @@ namespace Aesthetics.Controllers
 			return Ok(new { success = result });
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("deleteservice")]
 		[HttpPost("deleteservice")]
 		public async Task<IActionResult> Delete([FromBody] DeleteService service)
 		{
@@ -46,6 +53,8 @@ namespace Aesthetics.Controllers
 			return Ok(result);
 		}
 
+		[ServiceFilter(typeof(Filter_CheckToken))]
+		[Filter_Authorization("exportservicetoexcel")]
 		[HttpPost("exportservicetoexcel")]
 		public async Task<IActionResult> ExportToExcel([FromBody] exportservice service)
 		{

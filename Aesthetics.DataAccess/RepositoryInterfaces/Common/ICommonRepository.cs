@@ -18,6 +18,7 @@ namespace Aesthetics.Data.RepositoryInterfaces.Common
 		Task<bool> DeleteEntity(T entity);
 		Task<bool> DeleteRangeEntities(IEnumerable<T> entities);
         Task<T?> GetById(int id);
+		Task<T?> GetByIdForDelete(int id);
 		Task<ICollection<T>> FindByPredicate(Expression<Func<T, bool>> predicate);
 	}
 }
